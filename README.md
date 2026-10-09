@@ -9,9 +9,7 @@ Track the International Space Station (ISS), the Hubble Space Telescope, or any 
 
 This integration operates entirely locally and does not rely on external cloud APIs except for fetching public orbital element sets (TLEs) from CelesTrak (not rate-limited).
 
-It is an advanced, high-precision custom integration for Home Assistant that tracks any satellite using real-time orbital mechanics. It uses local SGP4 orbit propagation via `skyfield` and your Home Assistant zone coordinates to calculate live subpoint positions and predict upcoming overhead passes.
-
- using local SGP4 orbit propagation powered by [Skyfield](https://rhodesmill.org/skyfield/). 
+It is an advanced, high-precision custom integration for Home Assistant that tracks any satellite using real-time orbital mechanics. It uses local SGP4 orbit propagation using [Skyfield](https://rhodesmill.org/skyfield/) and your Home Assistant zone coordinates to calculate live subpoint positions and predict upcoming overhead passes.
 
 This integration utilizes the `skyfield` library and live CelesTrak TLE (Two-Line Element) data to perform **local SGP4 propagation**, giving you institutional-grade positional accuracy entirely offline and free of cloud dependencies.
 
