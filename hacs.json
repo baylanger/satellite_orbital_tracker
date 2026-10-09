@@ -1,0 +1,7 @@
+{
+  "name": "Satellite Orbital Tracker",
+  "render_readme": true,
+  "homeassistant": "2026.3.0",
+  "icon": "https://raw.githubusercontent.com/baylanger/satellite_orbital_tracker/main/custom_components/satellite_orbital_tracker/brand/icon.png",
+  "hide_default_branch": false
+}
