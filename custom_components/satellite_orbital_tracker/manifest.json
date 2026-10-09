@@ -1,0 +1,14 @@
+{
+  "domain": "satellite_orbital_tracker",
+  "name": "Satellite Orbital Tracker",
+  "codeowners": ["@baylanger"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/baylanger/satellite_orbital_tracker",
+  "issue_tracker": "https://github.com/baylanger/satellite_orbital_tracker/issues",
+  "iot_class": "local_polling",
+  "requirements": [
+    "skyfield>=1.45"
+  ],
+  "version": "1.0.0"
+}
