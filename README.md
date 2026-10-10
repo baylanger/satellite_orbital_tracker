@@ -113,19 +113,22 @@ State Class: measurement
 To keep the map cleanly zoomed out on a global view and display the historical trail of the ISS with timestamps, add a Manual card to your dashboard using the following YAML configuration:
 
 ```yaml
+type: map
 auto_fit: false
 default_zoom: 2
+hours_to_show: 3.5
 entities:
-  - entity: sensor.iss_predicted_position
+  - entity: sensor.satellite_iss_zarya_status
     name: ISS
-hours_to_show: 0.25
+    focus: true
+    label_mode: icon
 theme_mode: auto
-type: map
 ```
 Map Options Explained:
-- `default_zoom: 2`: Keeps the map view zoomed out globally across the planet.
 - `auto_fit: false`: Prevents the map from aggressively resetting or jumping focus every time coordinates update.
-- `hours_to_show`: 0.25: Plots a trailing history line (approx. 15 minutes of movement) on the map so you can hover over previous points to see timestamps and direction of travel.
+- `default_zoom: 2`: Keeps the map view zoomed out globally across the planet.
+- `hours_to_show: 3.5`: Plots a trailing history line on the map so you can hover over previous points to see timestamps and direction of travel.
+- `focus: true`: Keeps this entity in view when the map moves and zooms to show your entities.
 - `theme_mode: auto`: Automatically adjusts to match your dashboard's light or dark theme mode.
 
 ---
