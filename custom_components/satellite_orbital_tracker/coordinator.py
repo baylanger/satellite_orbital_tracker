@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone, timedelta
 import logging
+from typing import override
 import aiohttp
 
 from skyfield.api import EarthSatellite, load, wgs84
@@ -56,6 +57,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         """Handle options update by reloading the config entry."""
         await hass.config_entries.async_reload(entry.entry_id)
 
+    @override
     async def _async_update_data(self):
         """Fetch TLE, compute position, and find next pass."""
         try:
