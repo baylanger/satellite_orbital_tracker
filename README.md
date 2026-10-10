@@ -18,11 +18,13 @@ This integration utilizes the `skyfield` library and live CelesTrak TLE (Two-Lin
 ## Features
 
 - **Local SGP4 Tracking**: Computes position locally without relying on external cloud tracking APIs.
-- **UI Config Flow**: Easily set up and configure satellites directly from the Home Assistant user interface.
+- **UI Config Flow**: Set up and configure satellites directly from the Home Assistant user interface.
 - **Multi-Satellite Support**: Track multiple spacecraft concurrently.
-- **Automatic Multi-Entity Naming**: Sensors dynamically adopts official satellite names from CelesTrak telemetry data or selection presets.
 - **Resilient Fallback & Caching**: Memory caches TLE data and persistent storage to handle intermittent network issues and utilizes a multi-pass lookahead engine to handle mid-pass edge cases.
 - **Automatic Home Overhead Pass Detection**: Automatically calculates your upcoming local overhead passes using your Home Assistant zone coordinates (`latitude`, `longitude`, `elevation`), exposing transition times and maximum elevation attributes.
+- **Automatic Satellite Identification & Naming**: Enter a NORAD ID (e.g., `25544` for the ISS), and the integration dynamically fetches the official satellite name directly from CelesTrak's GP data feed. This name is automatically used to register your device and format your sensor entity names (e.g., `Satellite ISS (Zarya)`).
+- **Configurable Polling Interval**: Fine-tune your update frequency between 5 and 3600 seconds directly during setup or through the options flow.
+- **Multi-Language Support**: Fully localized with built-in translation dictionaries for English (`en`), French (`fr`), German (`de`), Español (`es`)
 - **Map Optimized**: Exposes standard latitude, longitude, and elevation attributes natively compatible with Home Assistant's Map Card.
 
 ---
@@ -53,18 +55,26 @@ This integration utilizes the `skyfield` library and live CelesTrak TLE (Two-Lin
 In Home Assistant,
 1. go to Settings > Devices & Services.
 2. Click Add Integration in the bottom right.
-3. Search for Satellite Orbital Tracker.
-4. Enter the numeric **NORAD Catalog Number** (`satellite_id`) of the satellite you want to track (defaults to `25544` for the ISS) and click **Submit**.
-- Choose a popular satellite from the dropdown list (such as ISS (Zarya) or Hubble Space Telescope) or type in any custom numeric NORAD Catalog Number (satellite_id).
+3. Search for Satellite Orbital Tracker
+4. Configure the tracking parameters:
 
-### Finding Satellite Catalog Numbers (`satellite_id`)
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| **NORAD ID** | String | *Required* | The catalog number of the satellite (e.g., `25544`). Used to query CelesTrak and compute orbital paths. |
+| **Update Interval** | Number | `120` | How often (in seconds) the sensor data and coordinates refresh (bounded between 5 and 3600 seconds). |
+
+5. Click **Submit**.
+
+### Managing Options
+You can later adjust the polling update interval at any time by clicking the **Configure** (gear) button on the integration entry in your UI.
+
+### Finding Satellite Catalog Numbers (`norad_id`)
 You can look up the unique NORAD Catalog Number (CATNR) for any spacecraft using the [CelesTrak Satellite Catalog (SATCAT)](https://celestrak.org/satcat/search.php). 
 
 * **Popular Presets:**
   * **ISS (Zarya):** `25544`
   * **Hubble Space Telescope:** `20580`
   * **Tiangong Space Station:** `48274`
-  * **NOAA 15 / 18 / 19:** `25338`, `28654`, `33591`
 
 ---
 

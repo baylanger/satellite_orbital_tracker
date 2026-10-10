@@ -14,6 +14,8 @@
       }
     },
     "error": {
+      "cannot_connect": "Échec de la connexion à CelesTrak, réessayez plus tard",
+      "invalid_norad_id": "L'identifiant NORAD saisi n'existe pas",
       "invalid_interval": "L'intervalle de mise à jour doit être compris entre 5 et 3600 secondes.",
       "integer_required": "L'intervalle de mise à jour doit être un nombre entier (sans décimales)."
     }
@@ -31,6 +33,8 @@
       }
     },
     "error": {
+      "cannot_connect": "Échec de la connexion à CelesTrak, réessayez plus tard",
+      "invalid_norad_id": "L'identifiant NORAD saisi n'existe pas",
       "invalid_interval": "L'intervalle de mise à jour doit être compris entre 5 et 3600 secondes.",
       "integer_required": "L'intervalle de mise à jour doit être un nombre entier (sans décimales)."
     }
