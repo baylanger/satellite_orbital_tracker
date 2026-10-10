@@ -1,0 +1,38 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Satellite Orbital Tracker",
+        "description": "Enter the NORAD ID and polling interval for the satellite.",
+        "data": {
+          "norad_id": "NORAD Satellite ID",
+          "update_interval": "Update Interval (seconds)"
+        },
+        "data_description": {
+          "update_interval": "Enter a whole number between 5 and 3600."
+        }
+      }
+    },
+    "error": {
+      "invalid_interval": "The update interval must be between 5 and 3600 seconds.",
+      "integer_required": "The update interval must be a whole number (no decimals)."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure Satellite Tracking",
+        "data": {
+          "update_interval": "Update Interval (seconds)"
+        },
+        "data_description": {
+          "update_interval": "Enter a whole number between 5 and 3600."
+        }
+      }
+    },
+    "error": {
+      "invalid_interval": "The update interval must be between 5 and 3600 seconds.",
+      "integer_required": "The update interval must be a whole number (no decimals)."
+    }
+  }
+}

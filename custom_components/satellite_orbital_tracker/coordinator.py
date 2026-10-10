@@ -21,19 +21,26 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize coordinator."""
         self.entry = entry
-        self.satellite_id = entry.data["satellite_id"]
-        self.satellite_name = entry.data["satellite_name"]
+        self.satellite_id = entry.data["norad_id"]
+        self.satellite_name = f"Satellite {self.satellite_id}"
         self.tle_url = f"https://celestrak.org/NORAD/elements/gp.php?CATNR={self.satellite_id}&FORMAT=tle"
 
         # Initialize Home Assistant Store helper for persistent disk caching
         self.store = Store(hass, 1, f"{DOMAIN}_{self.satellite_id}")
 
+        # Fetch configured update interval (default to 120s, minimum enforced at 5s)
+        update_interval_sec = entry.options.get("update_interval", 120)
+
         super().__init__(
             hass,
             _LOGGER,
             name=f"{DOMAIN}_{self.satellite_id}",
-            update_interval=timedelta(seconds=60),
+            update_interval=timedelta(seconds=update_interval_sec),
         )
+
+        # Listen for option changes so the interval updates live without restarting
+        entry.async_on_unload(entry.add_update_listener(self.async_update_listener))
+
         self.ts = load.timescale()
         self.satellite = None
         self.last_tle_fetch = None
@@ -43,6 +50,11 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             longitude_degrees=self.hass.config.longitude,
             elevation_m=self.hass.config.elevation
         )
+
+    @staticmethod
+    async def async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Handle options update by reloading the config entry."""
+        await hass.config_entries.async_reload(entry.entry_id)
 
     async def _async_update_data(self):
         """Fetch TLE, compute position, and find next pass."""

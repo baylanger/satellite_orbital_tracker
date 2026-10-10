@@ -38,12 +38,20 @@ class ISSBaseSensor(CoordinatorEntity, SensorEntity):
         self._attr_has_entity_name = True
         self._attr_icon = "mdi:satellite-variant"
 
+        # Prepending "Satellite " to the device name forces the slug to start with "satellite_"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": f"Satellite {entry.title}",
+            "manufacturer": "CelesTrak GP Data",
+            "model": f"NORAD ID: {entry.data['norad_id']}",
+        }
+
 class ISSStatusSensor(ISSBaseSensor):
     """Representation of the main mission status."""
 
     def __init__(self, coordinator, entry: ConfigEntry):
         super().__init__(coordinator, entry)
-        self._attr_name = f"{entry.data['satellite_name']} Status"
+        self._attr_name = "Status"
         self._attr_unique_id = f"{entry.entry_id}_status"
 
     @property
@@ -62,7 +70,7 @@ class ISSStatusSensor(ISSBaseSensor):
             "longitude": data.get("longitude"),
             "next_pass_time": data.get("next_pass_time"),
             "next_pass_event": data.get("next_pass_event"),
-            "source": f"Local SGP4 Engine ({self.entry.data['satellite_name']})",
+            "source": f"Local SGP4 Engine ({self.entry.title})",
         }
 
 class ISSAltitudeSensor(ISSBaseSensor):
@@ -70,7 +78,7 @@ class ISSAltitudeSensor(ISSBaseSensor):
 
     def __init__(self, coordinator, entry: ConfigEntry):
         super().__init__(coordinator, entry)
-        self._attr_name = f"{entry.data['satellite_name']} Orbital Altitude"
+        self._attr_name = "Orbital Altitude"
         self._attr_unique_id = f"{entry.entry_id}_altitude"
         self._attr_native_unit_of_measurement = UnitOfLength.KILOMETERS
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -86,7 +94,7 @@ class ISSMaxPassDegreesSensor(ISSBaseSensor):
 
     def __init__(self, coordinator, entry: ConfigEntry):
         super().__init__(coordinator, entry)
-        self._attr_name = f"{entry.data['satellite_name']} Next Pass Max Elevation"
+        self._attr_name = "Next Pass Max Elevation"
         self._attr_unique_id = f"{entry.entry_id}_max_degrees"
         self._attr_native_unit_of_measurement = DEGREE
         self._attr_state_class = SensorStateClass.MEASUREMENT
