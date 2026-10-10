@@ -1,0 +1,10 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Optional: assign reviewers or labels automatically
+    labels:
+      - "dependencies"
+      - "python"
