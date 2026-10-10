@@ -1,0 +1,29 @@
+name: Sync Manifest Requirements
+
+on:
+  push:
+    paths:
+      - 'requirements.txt'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Run Sync Script
+        run: python .github/scripts/sync_manifest.py
+
+      - name: Commit and push changes if manifest updated
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Auto-sync manifest.json requirements with requirements.txt [skip ci]"
+          file_pattern: "custom_components/satellite_orbital_tracker/manifest.json"
