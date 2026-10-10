@@ -4,7 +4,7 @@
 [![STARS](https://img.shields.io/github/stars/baylanger/satellite_orbital_tracker?style=for-the-badge&label=Stars&color=yellow)](https://github.com/baylanger/satellite_orbital_tracker/stargazers)
 [![DOWNLOADS](https://img.shields.io/github/downloads/baylanger/satellite_orbital_tracker/total?style=for-the-badge&label=Downloads&color=blue)](https://github.com/baylanger/satellite_orbital_tracker/releases)
 [![VERSION](https://img.shields.io/github/v/release/baylanger/satellite_orbital_tracker?style=for-the-badge&color=purple)](https://github.com/baylanger/satellite_orbital_tracker/releases)
-[![BUILD](https://img.shields.io/github/actions/workflow/status/baylanger/satellite_orbital_tracker/release.yml?style=for-the-badge&label=Build)]("https://github.com/baylanger/satellite_orbital_tracker/actions/workflows/release.yml)
+[![BUILD](https://img.shields.io/github/actions/workflow/status/baylanger/satellite_orbital_tracker/test.yml?style=for-the-badge&label=Build)](https://github.com/baylanger/satellite_orbital_tracker/actions/workflows/test.yml)
 
 
 Track the International Space Station (ISS), the Hubble Space Telescope, or any custom satellite simultaneously in Home Assistant.
