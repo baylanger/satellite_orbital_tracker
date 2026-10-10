@@ -1,6 +1,8 @@
 """Sensor platform for Satellite Orbital Tracker."""
 from __future__ import annotations
 
+from typing import override
+
 from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
@@ -55,12 +57,14 @@ class ISSStatusSensor(ISSBaseSensor):
         self._attr_unique_id = f"{entry.entry_id}_status"
 
     @property
+    @override
     def native_value(self):
         if self.coordinator.data:
             return self.coordinator.data.get("status", "In Orbit")
         return "Initializing"
 
     @property
+    @override
     def extra_state_attributes(self):
         data = self.coordinator.data
         if not data:
@@ -84,6 +88,7 @@ class ISSAltitudeSensor(ISSBaseSensor):
         self._attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
+    @override
     def native_value(self):
         if self.coordinator.data:
             return self.coordinator.data.get("altitude_km")
@@ -100,6 +105,7 @@ class ISSMaxPassDegreesSensor(ISSBaseSensor):
         self._attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
+    @override
     def native_value(self):
         if self.coordinator.data:
             return self.coordinator.data.get("next_pass_max_degrees")
