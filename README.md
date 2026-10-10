@@ -40,16 +40,13 @@ This integration utilizes the `skyfield` library and live CelesTrak TLE (Two-Lin
 3. Click the three dots in the top right corner and select **Custom repositories**.
 4. Paste your GitHub repository URL (`https://github.com/baylanger/satellite_orbital_tracker`) and select **Integration** as the category.
 5. Click **Add**.
-6. Find **Satellite Orbital Tracker** in the list, click **Download**, and restart Home Assistant.
+6. Find **Satellite Orbital Tracker** in the list, click **Download**, and **Restart** Home Assistant.
 
 ### Option 2: Manual Installation
 
 1. Download the [latest release ZIP file](https://github.com/baylanger/satellite_orbital_tracker/releases/latest) or clone this repository.
 2. Copy the `custom_components/satellite_orbital_tracker` folder into your Home Assistant configuration directory (`/config/custom_components/`).
-
----
-
-*Restart* Home Assistant to complete the setup.
+3. **Restart** Home Assistant to complete the setup.
 
 ---
 
