@@ -1,3 +1,4 @@
 # Runtime dependencies needed during test execution
 skyfield==1.55
 probatio==0.13.0
+beautifulsoup4
