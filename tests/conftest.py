@@ -9,8 +9,26 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Enable custom integration loading for pytest-homeassistant-custom-component
 pytest_plugins = "pytest_homeassistant_custom_component"
 
-
 @pytest.fixture(autouse=True)
 def auto_enable_custom_integrations(enable_custom_integrations):
     """Enable custom integrations for all tests."""
     yield
+
+"""Common fixtures and test constants for Satellite Orbital Tracker."""
+# Centralized Test Constants
+TEST_NORAD_ID = "25544"
+TEST_SATELLITE_NAME = "ISS (ZARYA)"
+TEST_TLE_LINE1 = "1 25544U 98067A   26010.50000000  .00016717  00000-0  10270-3 0  9993"
+TEST_TLE_LINE2 = "2 25544  51.6400 100.0000 0005000  0.0000 360.0000 15.50000000 12345"
+
+@pytest.fixture
+def test_sample_tle_response():
+    """Fixture returning mock CelesTrak JSON response payload."""
+    return [
+        {
+            "OBJECT_NAME": TEST_SATELLITE_NAME,
+            "NORAD_CAT_ID": int(TEST_NORAD_ID),
+            "TLE_LINE1": TEST_TLE_LINE1,
+            "TLE_LINE2": TEST_TLE_LINE2,
+        }
+    ]
