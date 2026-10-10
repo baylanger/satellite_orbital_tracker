@@ -6,6 +6,8 @@ updates:
       interval: "weekly"
     ignore:
       - dependency-name: "aiohttp"
+      - dependency-name: "pytest-aiohttp"
+      - dependency-name: "pytest-homeassistant-custom-component"
     # Optional: assign reviewers or labels automatically
     labels:
       - "dependencies"
