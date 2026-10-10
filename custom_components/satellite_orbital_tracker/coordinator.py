@@ -9,6 +9,7 @@ import aiohttp
 from skyfield.api import EarthSatellite, load, wgs84
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -16,8 +17,10 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# Define how often we pull fresh TLE data from CelesTrak (do not hammer their servers!)
-TLE_FETCH_INTERVAL = timedelta(hours=12)
+# TLE polling and retry intervals
+TLE_FETCH_INTERVAL = timedelta(hours=12)      # Normal interval between successful fetches
+TLE_RETRY_INTERVAL = timedelta(hours=1)       # Shorter retry interval if the last fetch failed
+LOST_SATELLITE_WINDOW = timedelta(hours=24)   # Duration of continuous 404s before raising a repair issue
 
 class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
     """Data update coordinator for tracking a specific satellite."""
@@ -47,7 +50,10 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
 
         self.ts = load.timescale()
         self.satellite = None
-        self.last_tle_fetch = None
+        self.last_tle_fetch = None        # Timestamp of last SUCCESSFUL fetch
+        self.last_tle_attempt = None      # Timestamp of last fetch ATTEMPT (success or fail)
+        self.last_fetch_status = 200      # Track HTTP status code of the last attempt
+        self.first_404_timestamp = None   # Tracks when a continuous 404 streak started
 
         self.home_observer = wgs84.latlon(
             latitude_degrees=self.hass.config.latitude,
@@ -83,13 +89,26 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                     except Exception as err:
                         _LOGGER.debug("Failed to parse stored TLE cache: %s", err)
 
-            # 2. Check if we need to fetch a fresh TLE using constant interval TLE_FETCH_INTERVAL
-            if self.satellite is None or self.last_tle_fetch is None or (now - self.last_tle_fetch) > TLE_FETCH_INTERVAL:
-                success = await self._async_fetch_and_parse_tle()
+            # 2. Check if we need to fetch a fresh TLE using intelligent interval / backoff logic
+            time_since_last_attempt = (now - self.last_tle_attempt) if self.last_tle_attempt else None
+            required_interval = TLE_FETCH_INTERVAL if self.last_fetch_status == 200 else TLE_RETRY_INTERVAL
+
+            should_fetch = (
+                self.satellite is None
+                or self.last_tle_attempt is None
+                or time_since_last_attempt > required_interval
+            )
+
+            if should_fetch:
+                success, status_code = await self._async_fetch_and_parse_tle()
+                self.last_tle_attempt = now
+                self.last_fetch_status = status_code
+
                 if not success:
                     if self.satellite is not None:
                         _LOGGER.warning(
-                            "Failed to fetch fresh TLE from CelesTrak. Using expired cached TLE data for %s.",
+                            "Failed to fetch fresh TLE from CelesTrak (Status: %s). Using cached TLE data for %s.",
+                            status_code,
                             self.satellite_name
                         )
                     else:
@@ -171,14 +190,39 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
 
         return {"time": None, "event": "Unknown", "max_alt": None}
 
-    async def _async_fetch_and_parse_tle(self) -> bool:
-        """Download, validate, and persistently store TLE from CelesTrak."""
+    async def _async_fetch_and_parse_tle(self) -> tuple[bool, int]:
+        """Download, validate, and persistently store TLE from CelesTrak with 404/repair tracking."""
         try:
             headers = {"User-Agent": "HomeAssistant-SatelliteOrbitalTracker/2.0"}
             async with aiohttp.ClientSession() as session:
                 async with session.get(self.tle_url, headers=headers, timeout=15) as response:
-                    if response.status != 200:
-                        return False
+                    status_code = response.status
+
+                    if status_code != 200:
+                        # Handle permanent 404 (Satellite missing / decayed)
+                        if status_code == 404:
+                            now = datetime.now(timezone.utc)
+                            if self.first_404_timestamp is None:
+                                self.first_404_timestamp = now
+
+                            if (now - self.first_404_timestamp) >= LOST_SATELLITE_WINDOW:
+                                ir.async_create_issue(
+                                    self.hass,
+                                    DOMAIN,
+                                    f"satellite_lost_{self.satellite_id}",
+                                    is_fixable=False,
+                                    severity=ir.IssueSeverity.WARNING,
+                                    translation_key="satellite_lost",
+                                    translation_placeholders={
+                                        "satellite_name": self.satellite_name,
+                                        "satellite_id": str(self.satellite_id),
+                                    },
+                                )
+                        return False, status_code
+
+                    # Reset 404 streak tracking and clear repair issue on successful connection
+                    self.first_404_timestamp = None
+                    ir.async_delete_issue(self.hass, DOMAIN, f"satellite_lost_{self.satellite_id}")
 
                     text = await response.text()
                     lines = [line.strip() for line in text.splitlines() if line.strip()]
@@ -195,7 +239,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                             parsed_name = line
 
                     if not line1 or not line2:
-                        return False
+                        return False, status_code
 
                     self.satellite = EarthSatellite(line1, line2, parsed_name, self.ts)
                     self.last_tle_fetch = datetime.now(timezone.utc)
@@ -215,7 +259,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                             new_data = {**hass_entry.data, "satellite_name": parsed_name}
                             self.hass.config_entries.async_update_entry(hass_entry, title=parsed_name, data=new_data)
 
-                    return True
+                    return True, status_code
         except Exception as err:
             _LOGGER.error("TLE fetch exception for %s: %s", self.satellite_name, err)
-            return False
+            return False, 0
