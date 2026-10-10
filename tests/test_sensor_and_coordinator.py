@@ -11,41 +11,39 @@ from homeassistant.util import dt as dt_util
 from custom_components.satellite_orbital_tracker.const import DOMAIN
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-# Sample TLE data for mocking CelesTrak GP data format
-SAMPLE_TLE_RESPONSE = [
-    {
-        "OBJECT_NAME": "ISS (ZARYA)",
-        "NORAD_CAT_ID": 25544,
-        "TLE_LINE1": "1 25544U 98067A   26010.50000000  .00016717  00000-0  10270-3 0  9993",
-        "TLE_LINE2": "2 25544  51.6400 100.0000 0005000  0.0000 360.0000 15.50000000 12345",
-    }
-]
+from conftest import (
+    TEST_NORAD_ID,
+    TEST_SATELLITE_NAME,
+    TEST_TLE_LINE1,
+    TEST_TLE_LINE2,
+)
 
-async def test_coordinator_and_sensors(hass: HomeAssistant) -> None:
+
+async def test_coordinator_and_sensors(hass: HomeAssistant, test_sample_tle_response) -> None:
     """Test setting up the config entry, coordinator updates, and sensor entities."""
     config_entry = MockConfigEntry(
         domain=DOMAIN,
-        title="ISS (ZARYA)",
-        data={"norad_id": "25544", "update_interval": 120},
+        title=TEST_SATELLITE_NAME,
+        data={"norad_id": TEST_NORAD_ID, "update_interval": 120},
     )
     config_entry.add_to_hass(hass)
 
     tle_text = (
-        "ISS (ZARYA)\n"
-        "1 25544U 98067A   26010.50000000  .00016717  00000-0  10270-3 0  9993\n"
-        "2 25544  51.6400 100.0000 0005000  0.0000 360.0000 15.50000000 12345"
+        f"{TEST_SATELLITE_NAME}\n"
+        f"{TEST_TLE_LINE1}\n"
+        f"{TEST_TLE_LINE2}"
     )
 
     with aioresponses() as m:
-        # Mock JSON format endpoint
+        # Mock JSON format endpoint using fixture
         m.get(
-            "https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=json",
-            payload=SAMPLE_TLE_RESPONSE,
+            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=json",
+            payload=test_sample_tle_response,
             status=200,
         )
-        # Mock TLE format endpoint if your coordinator fetches it directly
+        # Mock TLE format endpoint
         m.get(
-            "https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=tle",
+            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=tle",
             body=tle_text,
             status=200,
         )
@@ -58,19 +56,24 @@ async def test_coordinator_and_sensors(hass: HomeAssistant) -> None:
     entries = er.async_entries_for_config_entry(entity_registry, config_entry.entry_id)
     assert len(entries) > 0
 
+
 async def test_coordinator_update_failure(hass: HomeAssistant) -> None:
-    """Test coordinator behavior when the external API fails."""
+    """Test coordinator behavior when the external API fails completely with no cache."""
     config_entry = MockConfigEntry(
         domain=DOMAIN,
-        title="ISS (ZARYA)",
-        data={"norad_id": "25544", "update_interval": 120},
+        title=TEST_SATELLITE_NAME,
+        data={"norad_id": TEST_NORAD_ID, "update_interval": 120},
     )
     config_entry.add_to_hass(hass)
 
     with aioresponses() as m:
-        # Simulate network error or server drop
+        # Simulate network error or server drop on setup fetch
         m.get(
-            "https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=json",
+            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=json",
+            status=500,
+        )
+        m.get(
+            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=tle",
             status=500,
         )
 
