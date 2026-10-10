@@ -16,6 +16,9 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+# Define how often we pull fresh TLE data from CelesTrak (do not hammer their servers!)
+TLE_FETCH_INTERVAL = timedelta(hours=12)
+
 class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
     """Data update coordinator for tracking a specific satellite."""
 
@@ -29,7 +32,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         # Initialize Home Assistant Store helper for persistent disk caching
         self.store = Store(hass, 1, f"{DOMAIN}_{self.satellite_id}")
 
-        # Fetch configured update interval (default to 120s, minimum enforced at 5s)
+        # Fetch configured sensor position update interval (default to 120s, minimum enforced at 5s)
         update_interval_sec = entry.options.get("update_interval", 120)
 
         super().__init__(
@@ -59,7 +62,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
 
     @override
     async def _async_update_data(self):
-        """Fetch TLE, compute position, and find next pass."""
+        """Fetch TLE (if interval elapsed), compute position, and find next pass."""
         try:
             now = datetime.now(timezone.utc)
 
@@ -80,14 +83,17 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                     except Exception as err:
                         _LOGGER.debug("Failed to parse stored TLE cache: %s", err)
 
-            # 2. Check if we need to fetch a fresh TLE (older than 12 hours or never fetched)
-            if self.satellite is None or self.last_tle_fetch is None or (now - self.last_tle_fetch).total_seconds() > 43200:
+            # 2. Check if we need to fetch a fresh TLE using constant interval TLE_FETCH_INTERVAL
+            if self.satellite is None or self.last_tle_fetch is None or (now - self.last_tle_fetch) > TLE_FETCH_INTERVAL:
                 success = await self._async_fetch_and_parse_tle()
-                if not success and self.satellite is None:
-                    if self.data:
-                        _LOGGER.warning("Using cached TLE data for %s due to fetch failure.", self.satellite_name)
-                        return self.data
-                    raise UpdateFailed(f"Failed to download TLE data for {self.satellite_name}.")
+                if not success:
+                    if self.satellite is not None:
+                        _LOGGER.warning(
+                            "Failed to fetch fresh TLE from CelesTrak. Using expired cached TLE data for %s.",
+                            self.satellite_name
+                        )
+                    else:
+                        raise UpdateFailed(f"Failed to download TLE data and no cache exists for {self.satellite_name}.")
 
             t = self.ts.from_datetime(now)
             geocentric = self.satellite.at(t)
