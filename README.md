@@ -7,7 +7,7 @@
 
 Track the International Space Station (ISS), the Hubble Space Telescope, or any custom satellite simultaneously in Home Assistant.
 
-This integration operates entirely locally and does not rely on external cloud APIs except for fetching public orbital element sets (TLEs) from CelesTrak (not rate-limited).
+This integration operates entirely locally and does not rely on external cloud APIs except for fetching, every 12hrs, public orbital element sets (TLEs) from CelesTrak (not rate-limited).
 
 It is an advanced, high-precision custom integration for Home Assistant that tracks any satellite using real-time orbital mechanics. It uses local SGP4 orbit propagation using [Skyfield](https://rhodesmill.org/skyfield/) and your Home Assistant zone coordinates to calculate live subpoint positions and predict upcoming overhead passes.
 
@@ -38,11 +38,11 @@ This integration utilizes the `skyfield` library and live CelesTrak TLE (Two-Lin
 3. Click the three dots in the top right corner and select **Custom repositories**.
 4. Paste your GitHub repository URL (`https://github.com/baylanger/satellite_orbital_tracker`) and select **Integration** as the category.
 5. Click **Add**.
-6. Find **ISS Predicted Tracker** in the list, click **Download**, and restart Home Assistant.
+6. Find **Satellite Orbital Tracker** in the list, click **Download**, and restart Home Assistant.
 
 ### Option 2: Manual Installation
 
-1. Download or clone this repository.
+1. Download the [latest release ZIP file](https://github.com/baylanger/satellite_orbital_tracker/releases/latest) or clone this repository.
 2. Copy the `custom_components/satellite_orbital_tracker` folder into your Home Assistant configuration directory (`/config/custom_components/`).
 
 ---
@@ -52,11 +52,12 @@ This integration utilizes the `skyfield` library and live CelesTrak TLE (Two-Lin
 ---
 
 ## Configuration
+
 In Home Assistant,
-1. go to Settings > Devices & Services.
-2. Click Add Integration in the bottom right.
-3. Search for Satellite Orbital Tracker
-4. Configure the tracking parameters:
+1. Go to **Settings -> Devices & Services**
+2. Click **Add Integration** in the bottom right.
+3. Search for **Satellite Orbital Tracker**
+4. Configure satellite tracking parameters:
 
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
@@ -72,9 +73,9 @@ You can later adjust the polling update interval at any time by clicking the **C
 You can look up the unique NORAD Catalog Number (CATNR) for any spacecraft using the [CelesTrak Satellite Catalog (SATCAT)](https://celestrak.org/satcat/search.php). 
 
 * **Popular Presets:**
-  * **ISS (Zarya):** `25544`
+  * **ISS (Zarya):** `25544` (International Space Station)
   * **Hubble Space Telescope:** `20580`
-  * **Tiangong Space Station:** `48274`
+  * **CSS (Tianhe):** `48274` (Chinese Space Station)
 
 ---
 
