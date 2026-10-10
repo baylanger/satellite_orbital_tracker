@@ -38,5 +38,11 @@
       "invalid_interval": "The update interval must be between 5 and 3600 seconds.",
       "integer_required": "The update interval must be a whole number (no decimals)."
     }
+  },
+  "issues": {
+    "satellite_lost": {
+      "title": "Satellite {satellite_name} ({satellite_id}) Missing",
+      "description": "CelesTrak has returned a 404 Not Found error for NORAD ID {satellite_id} continuously for over 24 hours. The satellite may have decayed or been decommissioned."
+    }
   }
 }

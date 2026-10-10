@@ -38,5 +38,11 @@
       "invalid_interval": "L'intervalle de mise à jour doit être compris entre 5 et 3600 secondes.",
       "integer_required": "L'intervalle de mise à jour doit être un nombre entier (sans décimales)."
     }
+  },
+  "issues": {
+    "satellite_lost": {
+      "title": "Satellite {satellite_name} ({satellite_id}) manquant",
+      "description": "CelesTrak a renvoyé une erreur 404 Non trouvé pour l'identifiant NORAD {satellite_id} de manière continue pendant plus de 2 heures. Le satellite a peut-être désintégré ou été désaffecté."
+    }
   }
 }

@@ -29,6 +29,13 @@ This integration utilizes the `skyfield` library and live CelesTrak TLE (Two-Lin
 - **Multi-Language Support**: Fully localized with built-in translation dictionaries for English (`en`), French (`fr`), German (`de`), Español (`es`)
 - **Map Optimized**: Exposes standard latitude, longitude, and elevation attributes natively compatible with Home Assistant's Map Card.
 
+### Robust Error Handling & Repair Notifications
+
+The integration includes built-in resilience for tracking satellite data from CelesTrak:
+- **Transient Error Backoff:** If CelesTrak returns temporary server errors (5xx), the coordinator backs off and retries on an accelerated 1-hour schedule rather than waiting for the standard 12-hour sync window.
+- **Lost Satellite Detection (24-Hour Grace Period):** If CelesTrak returns a continuous `404 Not Found` for over 24 hours (indicating a decayed or decommissioned satellite), Home Assistant will automatically trigger a **Repair Issue** notification.
+- **Automatic Recovery:** If the satellite shows back up in the CelesTrak database and returns a valid TLE (HTTP 200) after a 404 repair was raised, the integration automatically clears the repair issue and resets its internal tracking.
+
 ---
 
 ## Installation
