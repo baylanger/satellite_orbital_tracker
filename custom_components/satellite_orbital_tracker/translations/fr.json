@@ -1,0 +1,38 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Suivi orbital de satellite",
+        "description": "Entrez l'identifiant NORAD et l'intervalle de scrutation pour le satellite.",
+        "data": {
+          "norad_id": "Identifiant de satellite NORAD",
+          "update_interval": "Intervalle de mise à jour (secondes)"
+        },
+        "data_description": {
+          "update_interval": "Entrez un nombre entier entre 5 et 3600."
+        }
+      }
+    },
+    "error": {
+      "invalid_interval": "L'intervalle de mise à jour doit être compris entre 5 et 3600 secondes.",
+      "integer_required": "L'intervalle de mise à jour doit être un nombre entier (sans décimales)."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configurer le suivi des satellites",
+        "data": {
+          "update_interval": "Intervalle de mise à jour (secondes)"
+        },
+        "data_description": {
+          "update_interval": "Entrez un nombre entier entre 5 et 3600."
+        }
+      }
+    },
+    "error": {
+      "invalid_interval": "L'intervalle de mise à jour doit être compris entre 5 et 3600 secondes.",
+      "integer_required": "L'intervalle de mise à jour doit être un nombre entier (sans décimales)."
+    }
+  }
+}

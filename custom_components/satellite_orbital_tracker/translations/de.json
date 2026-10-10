@@ -1,0 +1,38 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Satelliten-Bahnerfassung",
+        "description": "Geben Sie die NORAD-ID und das Abfrageintervall für den Satelliten ein.",
+        "data": {
+          "norad_id": "NORAD-Satelliten-ID",
+          "update_interval": "Aktualisierungsintervall (Sekunden)"
+        },
+        "data_description": {
+          "update_interval": "Geben Sie eine ganze Zahl zwischen 5 und 3600 ein."
+        }
+      }
+    },
+    "error": {
+      "invalid_interval": "Das Aktualisierungsintervall muss zwischen 5 und 3600 Sekunden liegen.",
+      "integer_required": "Das Aktualisierungsintervall muss eine ganze Zahl sein (keine Dezimalstellen)."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Satellitenverfolgung konfigurieren",
+        "data": {
+          "update_interval": "Aktualisierungsintervall (Sekunden)"
+        },
+        "data_description": {
+          "update_interval": "Geben Sie eine ganze Zahl zwischen 5 und 3600 ein."
+        }
+      }
+    },
+    "error": {
+      "invalid_interval": "Das Aktualisierungsintervall muss zwischen 5 und 3600 Sekunden liegen.",
+      "integer_required": "Das Aktualisierungsintervall muss eine ganze Zahl sein (keine Dezimalstellen)."
+    }
+  }
+}

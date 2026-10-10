@@ -1,0 +1,38 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Rastreador orbital de satélites",
+        "description": "Introduce el ID de NORAD y el intervalo de sondeo para el satélite.",
+        "data": {
+          "norad_id": "ID de satélite NORAD",
+          "update_interval": "Intervalo de actualización (segundos)"
+        },
+        "data_description": {
+          "update_interval": "Introduce un número entero entre 5 y 3600."
+        }
+      }
+    },
+    "error": {
+      "invalid_interval": "El intervalo de actualización debe estar entre 5 y 3600 segundos.",
+      "integer_required": "El intervalo de actualización debe ser un número entero (sin decimales)."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configurar el seguimiento de satélites",
+        "data": {
+          "update_interval": "Intervalo de actualización (segundos)"
+        },
+        "data_description": {
+          "update_interval": "Introduce un número entero entre 5 y 3600."
+        }
+      }
+    },
+    "error": {
+      "invalid_interval": "El intervalo de actualización debe estar entre 5 y 3600 segundos.",
+      "integer_required": "El intervalo de actualización debe ser un número entero (sin decimales)."
+    }
+  }
+}
