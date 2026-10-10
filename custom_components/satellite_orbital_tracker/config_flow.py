@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import aiohttp
-import voluptuous as vol
+import probatio
 
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant, callback
@@ -83,10 +83,10 @@ class SatelliteOrbitalTrackerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
                         data=user_input,
                     )
 
-        schema = vol.Schema(
+        schema = probatio.Schema(
             {
-                vol.Required("norad_id"): str,
-                vol.Required(
+                probatio.Required("norad_id"): str,
+                probatio.Required(
                     "update_interval", default=120
                 ): selector.NumberSelector(
                     selector.NumberSelectorConfig(
@@ -124,12 +124,12 @@ class SatelliteOrbitalTrackerOptionsFlow(config_entries.OptionsFlow):
             self.config_entry.data.get("update_interval", 120)
         )
 
-        schema = vol.Schema(
+        schema = probatio.Schema(
             {
-                vol.Required(
+                probatio.Required(
                     "update_interval",
                     default=current_interval,
-                ): vol.All(vol.Coerce(int), vol.Range(min=5, max=3600))
+                ): probatio.All(probatio.Coerce(int), probatio.Range(min=5, max=3600))
             }
         )
 
