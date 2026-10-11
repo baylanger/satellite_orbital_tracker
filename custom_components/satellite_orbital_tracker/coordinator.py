@@ -6,10 +6,14 @@ import logging
 from typing import override
 import aiohttp
 
+from bs4 import BeautifulSoup
+import re
+
 from skyfield.api import EarthSatellite, load, wgs84
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -17,10 +21,11 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# TLE polling and retry intervals
+# TLE polling, retry intervals, and crew fetch frequency
 TLE_FETCH_INTERVAL = timedelta(hours=12)      # Normal interval between successful fetches
 TLE_RETRY_INTERVAL = timedelta(hours=1)       # Shorter retry interval if the last fetch failed
 LOST_SATELLITE_WINDOW = timedelta(hours=24)   # Duration of continuous 404s before raising a repair issue
+CREW_FETCH_INTERVAL = timedelta(hours=24)     # Only scrape NASA crew manifest once a day
 
 class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
     """Data update coordinator for tracking a specific satellite."""
@@ -54,6 +59,8 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         self.last_tle_attempt = None      # Timestamp of last fetch ATTEMPT (success or fail)
         self.last_fetch_status = 200      # Track HTTP status code of the last attempt
         self.first_404_timestamp = None   # Tracks when a continuous 404 streak started
+        self.crew_members = []            # Cached list of current ISS crew members
+        self.last_crew_fetch = None       # Timestamp of last successful crew scrape
 
         self.home_observer = wgs84.latlon(
             latitude_degrees=self.hass.config.latitude,
@@ -114,6 +121,17 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                     else:
                         raise UpdateFailed(f"Failed to download TLE data and no cache exists for {self.satellite_name}.")
 
+            # 3. Fetch structured ISS crew manifest once a day if tracking the ISS (NORAD ID 25544)
+            crew_data = self.crew_members
+            if str(self.satellite_id) == "25544":
+                time_since_crew_fetch = (now - self.last_crew_fetch) if self.last_crew_fetch else None
+                if not self.crew_members or not time_since_crew_fetch or time_since_crew_fetch >= CREW_FETCH_INTERVAL:
+                    scraped_crew = await self._async_fetch_iss_crew_from_nasa()
+                    if scraped_crew:
+                        self.crew_members = scraped_crew
+                        self.last_crew_fetch = now
+                crew_data = self.crew_members
+
             t = self.ts.from_datetime(now)
             geocentric = self.satellite.at(t)
             subpoint = wgs84.subpoint(geocentric)
@@ -142,6 +160,8 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                 "next_pass_time": next_pass.get("time"),
                 "next_pass_event": next_pass.get("event"),
                 "next_pass_max_degrees": next_pass.get("max_alt"),
+                "crew_count": len(crew_data),
+                "crew_members": crew_data,
             }
 
         except Exception as err:
@@ -149,6 +169,65 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             if self.data:
                 return self.data
             raise UpdateFailed(f"Orbital calculation failed: {err}")
+
+    async def _async_fetch_iss_crew_from_nasa(self) -> list[dict]:
+        """Scrape structured ISS crew members from NASA's astronaut page under 'At the Space Station'."""
+        if str(self.satellite_id) != "25544":
+            return []
+
+        url = "https://www.nasa.gov/humans-in-space/astronauts/"
+        headers = {"User-Agent": "HomeAssistant-SatelliteOrbitalTracker/2.0"}
+
+        try:
+            # Use Home Assistant's global shared session so aioresponses cleanly intercepts it
+            session = async_get_clientsession(self.hass)
+            async with session.get(url, headers=headers, timeout=15) as response:
+                if response.status != 200:
+                    return self.crew_members or []
+
+                html_text = await response.text()
+                soup = BeautifulSoup(html_text, "html.parser")
+                crew_list = []
+
+                station_header = soup.find(lambda tag: tag.name in ["h2", "h3"] and "At the Space Station" in tag.text)
+                if station_header:
+                    module_container = station_header.find_parent("div", class_="hds-module")
+                    cards = module_container.find_all("div", class_="hds-meet-the-card") if module_container else soup.find_all("div", class_="hds-meet-the-card")
+                else:
+                    cards = soup.find_all("div", class_="hds-meet-the-card")
+
+                for card in cards:
+                    name_header = card.find("h3")
+                    bio_p = card.find("p")
+
+                    if name_header:
+                        name = name_header.get_text(strip=True)
+                        bio_text = bio_p.get_text(strip=True) if bio_p else ""
+
+                        agency = "Unknown"
+                        if "Roscosmos" in bio_text or "cosmonaut" in bio_text.lower():
+                            agency = "Roscosmos"
+                        elif "CSA" in bio_text or "Canadian" in bio_text:
+                            agency = "CSA"
+                        elif "NASA" in bio_text:
+                            agency = "NASA"
+
+                        exp_match = re.search(r"Expedition\s+[\d/]+", bio_text, re.IGNORECASE)
+                        expedition = exp_match.group(0) if exp_match else None
+
+                        crew_list.append({
+                            "name": name,
+                            "agency": agency,
+                            "title": bio_text,
+                            "expedition": expedition
+                        })
+
+                if crew_list:
+                    return crew_list
+        except Exception as err:
+            _LOGGER.debug("Failed to parse detailed NASA crew page: %s", err)
+
+        return self.crew_members or []
 
     def _calculate_next_pass(self, now: datetime):
         """Find the next upcoming pass over home coordinates."""

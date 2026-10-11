@@ -1,9 +1,10 @@
 """Test the Satellite Orbital Tracker coordinator and sensors."""
-from datetime import timedelta
+from datetime import datetime, timezone, timedelta
 from unittest.mock import patch
 from aioresponses import aioresponses
-from datetime import datetime, timezone, timedelta
+from pprint import pprint
 import pytest
+import re
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -20,7 +21,6 @@ from conftest import (
     TEST_TLE_LINE2,
 )
 
-
 async def test_coordinator_and_sensors(hass: HomeAssistant, test_sample_tle_response) -> None:
     """Test setting up the config entry, coordinator updates, and sensor entities."""
     config_entry = MockConfigEntry(
@@ -30,24 +30,29 @@ async def test_coordinator_and_sensors(hass: HomeAssistant, test_sample_tle_resp
     )
     config_entry.add_to_hass(hass)
 
-    tle_text = (
-        f"{TEST_SATELLITE_NAME}\n"
-        f"{TEST_TLE_LINE1}\n"
-        f"{TEST_TLE_LINE2}"
-    )
+    # Pre-populate the disk store cache so startup succeeds instantly
+    store = Store(hass, 1, f"{DOMAIN}_{TEST_NORAD_ID}")
+    await store.async_save({
+        "line1": TEST_TLE_LINE1,
+        "line2": TEST_TLE_LINE2,
+        "name": TEST_SATELLITE_NAME,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
 
     with aioresponses() as m:
-        # Mock JSON format endpoint using fixture
+        # Mock NASA astronaut page endpoint for ISS (NORAD 25544)
         m.get(
-            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=json",
-            payload=test_sample_tle_response,
+            re.compile(r"^https://www\.nasa\.gov/humans-in-space/astronauts/.*$"),
             status=200,
+            body="<html><body></body></html>",
+            repeat=True,
         )
-        # Mock TLE format endpoint
+        # Mock CelesTrak just in case a background update triggers
         m.get(
-            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=tle",
-            body=tle_text,
+            re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$"),
+            body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}",
             status=200,
+            repeat=True,
         )
 
         assert await hass.config_entries.async_setup(config_entry.entry_id)
@@ -57,7 +62,6 @@ async def test_coordinator_and_sensors(hass: HomeAssistant, test_sample_tle_resp
     entity_registry = er.async_get(hass)
     entries = er.async_entries_for_config_entry(entity_registry, config_entry.entry_id)
     assert len(entries) > 0
-
 
 async def test_coordinator_update_failure(hass: HomeAssistant) -> None:
     """Test coordinator behavior when the external API fails completely with no cache."""
@@ -77,6 +81,11 @@ async def test_coordinator_update_failure(hass: HomeAssistant) -> None:
         m.get(
             f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=tle",
             status=500,
+        )
+        m.get(
+            "https://www.nasa.gov/humans-in-space/astronauts/",
+            status=200,
+            body="<html><body></body></html>",
         )
 
         assert not await hass.config_entries.async_setup(config_entry.entry_id)
@@ -100,6 +109,11 @@ async def test_coordinator_server_error_failure(hass: HomeAssistant) -> None:
         m.get(
             f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=tle",
             status=503,
+        )
+        m.get(
+            "https://www.nasa.gov/humans-in-space/astronauts/",
+            status=200,
+            body="<html><body></body></html>",
         )
 
         assert not await hass.config_entries.async_setup(config_entry.entry_id)
@@ -125,6 +139,11 @@ async def test_coordinator_invalid_satellite_404(hass: HomeAssistant) -> None:
         m.get(
             f"https://celestrak.org/NORAD/elements/gp.php?CATNR={invalid_norad}&FORMAT=tle",
             status=404,
+        )
+        m.get(
+            "https://www.nasa.gov/humans-in-space/astronauts/",
+            status=200,
+            body="<html><body></body></html>",
         )
 
         assert not await hass.config_entries.async_setup(config_entry.entry_id)
@@ -156,6 +175,11 @@ async def test_coordinator_startup_fallback_to_cache(hass: HomeAssistant) -> Non
             f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=tle",
             status=500,
         )
+        m.get(
+            "https://www.nasa.gov/humans-in-space/astronauts/",
+            status=200,
+            body="<html><body></body></html>",
+        )
 
         # Startup should still succeed because it successfully falls back to the disk cache
         assert await hass.config_entries.async_setup(config_entry.entry_id)
@@ -185,8 +209,11 @@ async def test_coordinator_skips_fetch_if_cache_fresh(hass: HomeAssistant) -> No
     })
 
     with aioresponses() as m:
-        # We do NOT register any mock endpoint for CelesTrak here.
-        # If the code attempts to fetch, aioresponses will raise an unhandled connection error.
+        m.get(
+            "https://www.nasa.gov/humans-in-space/astronauts/",
+            status=200,
+            body="<html><body></body></html>",
+        )
 
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
@@ -198,8 +225,6 @@ async def test_coordinator_skips_fetch_if_cache_fresh(hass: HomeAssistant) -> No
 
 async def test_coordinator_404_repair_issue_creation(hass: HomeAssistant) -> None:
     """Test that a continuous 404 error triggers a Home Assistant Repair issue after the duration window."""
-    from unittest.mock import patch
-
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         title=TEST_SATELLITE_NAME,
@@ -220,6 +245,11 @@ async def test_coordinator_404_repair_issue_creation(hass: HomeAssistant) -> Non
             f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=tle",
             status=200,
             body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}",
+        )
+        m.get(
+            "https://www.nasa.gov/humans-in-space/astronauts/",
+            status=200,
+            body="<html><body></body></html>",
         )
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
@@ -253,7 +283,7 @@ async def test_coordinator_5xx_server_error_retry_backoff(hass: HomeAssistant) -
     config_entry.add_to_hass(hass)
 
     with aioresponses() as m:
-        # Simulate a 503 Service Unavailable error from CelesTrak
+        # Simulate a 503 Service Unavailable error
         m.get(
             f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=json",
             status=503,
@@ -261,6 +291,11 @@ async def test_coordinator_5xx_server_error_retry_backoff(hass: HomeAssistant) -
         m.get(
             f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=tle",
             status=503,
+        )
+        m.get(
+            "https://www.nasa.gov/humans-in-space/astronauts/",
+            status=200,
+            body="<html><body></body></html>",
         )
 
         assert not await hass.config_entries.async_setup(config_entry.entry_id)
@@ -295,6 +330,11 @@ async def test_coordinator_404_recovery_clears_issue(hass: HomeAssistant) -> Non
             f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=tle",
             status=200,
             body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}",
+        )
+        m.get(
+            "https://www.nasa.gov/humans-in-space/astronauts/",
+            status=200,
+            body="<html><body></body></html>",
         )
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
@@ -356,6 +396,11 @@ async def test_coordinator_first_time_404_no_repair_issue(hass: HomeAssistant) -
             status=200,
             body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}",
         )
+        m.get(
+            "https://www.nasa.gov/humans-in-space/astronauts/",
+            status=200,
+            body="<html><body></body></html>",
+        )
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
@@ -380,3 +425,138 @@ async def test_coordinator_first_time_404_no_repair_issue(hass: HomeAssistant) -
     issue_registry = ir.async_get(hass)
     issue_id = f"satellite_lost_{TEST_NORAD_ID}"
     assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
+
+async def test_coordinator_iss_structured_crew_scraping(hass: HomeAssistant) -> None:
+    """Test that ISS crew scraping returns a valid roster under the 'At the Space Station' header."""
+    iss_norad_id = 25544
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="ISS (ZARYA)",
+        data={"norad_id": iss_norad_id, "update_interval": 120},
+    )
+    config_entry.add_to_hass(hass)
+
+    store = Store(hass, 1, f"{DOMAIN}_{iss_norad_id}")
+    await store.async_save({
+        "line1": "1 25544U 98067A   26080.50000000  .00016717  00000-0  30175-3 0  9999",
+        "line2": "2 25544  51.6416 247.4627 0006703 130.5360 329.5445 15.49815350414522",
+        "name": "ISS (ZARYA)",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
+    mock_nasa_html = """
+    <div class="hds-module">
+        <h2>At the Space Station</h2>
+        <div class="hds-meet-the-card padding-right-7">
+            <div class="hds-meet-the-content">
+                <h3 class="heading-18">Jessica Watkins</h3>
+                <p class="p-sm">NASA astronaut and Expedition 74/75 Commander</p>
+            </div>
+        </div>
+        <div class="hds-meet-the-card padding-right-7">
+            <div class="hds-meet-the-content">
+                <h3 class="heading-18">Pyotr Dubrov</h3>
+                <p class="p-sm">Roscosmos cosmonaut and Flight Engineer</p>
+            </div>
+        </div>
+    </div>
+    """
+
+    with aioresponses() as m:
+        m.get(
+            re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$"),
+            status=200,
+            body="ISS (ZARYA)\n1 25544U...\n2 25544...",
+            repeat=True,
+        )
+        # Exact match pattern for NASA URL
+        m.get(
+            "https://www.nasa.gov/humans-in-space/astronauts/",
+            status=200,
+            body=mock_nasa_html,
+            repeat=True,
+        )
+
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+        coordinator = hass.data[DOMAIN][config_entry.entry_id]
+
+        # Trigger an explicit coordinator refresh INSIDE the aioresponses block
+        await coordinator.async_refresh()
+
+        # Extract data while still inside the mock scope to be fully safe
+        crew_data = coordinator.data.get("crew_members", [])
+
+    print("\n" + "="*50)
+    print("LIVE PARSED ISS CREW ROSTER FROM TEST:")
+    pprint(crew_data)
+    print("="*50 + "\n")
+
+    assert len(crew_data) > 0
+    nasa_members = [member for member in crew_data if member["agency"] == "NASA"]
+    assert len(nasa_members) > 0
+
+async def test_coordinator_iss_structured_crew_scraping(hass: HomeAssistant) -> None:
+    """Test that ISS crew scraping returns a valid roster with live debug output."""
+    iss_norad_id = 25544
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="ISS (ZARYA)",
+        data={"norad_id": iss_norad_id, "update_interval": 120},
+    )
+    config_entry.add_to_hass(hass)
+
+    # Pre-populate the store cache so setup initializes smoothly
+    store = Store(hass, 1, f"{DOMAIN}_{iss_norad_id}")
+    await store.async_save({
+        "line1": "1 25544U 98067A   26080.50000000  .00016717  00000-0  30175-3 0  9999",
+        "line2": "2 25544  51.6416 247.4627 0006703 130.5360 329.5445 15.49815350414522",
+        "name": "ISS (ZARYA)",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
+    with aioresponses() as m:
+        # Mock CelesTrak endpoints persistently
+        m.get(
+            re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$"),
+            status=200,
+            body="ISS (ZARYA)\n1 25544U...\n2 25544...",
+            repeat=True,
+        )
+        # Mock NASA astronaut page with sample card markup
+        m.get(
+            re.compile(r"^https://www\.nasa\.gov/humans-in-space/astronauts/.*$"),
+            status=200,
+            body="""
+            <div class="hds-meet-the-card padding-right-7">
+                <div class="hds-meet-the-content">
+                    <h3 class="heading-18">Jessica Watkins</h3>
+                    <p class="p-sm">NASA astronaut and Expedition 74/75 Commander</p>
+                </div>
+            </div>
+            <div class="hds-meet-the-card padding-right-7">
+                <div class="hds-meet-the-content">
+                    <h3 class="heading-18">Pyotr Dubrov</h3>
+                    <p class="p-sm">Roscosmos cosmonaut and Flight Engineer</p>
+                </div>
+            </div>
+            """,
+            repeat=True,
+        )
+
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    coordinator = hass.data[DOMAIN][config_entry.entry_id]
+    crew_data = await coordinator._async_fetch_iss_crew_from_nasa()
+
+    # Print out the parsed crew roster to your terminal
+    print("\n" + "="*50)
+    print("LIVE PARSED ISS CREW ROSTER FROM TEST:")
+    pprint(crew_data)
+    print("="*50 + "\n")
+
+    assert len(crew_data) > 0
+    nasa_members = [member for member in crew_data if member["agency"] == "NASA"]
+    assert len(nasa_members) > 0

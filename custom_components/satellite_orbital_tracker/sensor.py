@@ -1,6 +1,7 @@
 """Sensor platform for Satellite Orbital Tracker."""
 from __future__ import annotations
 
+import math
 from typing import override
 
 from homeassistant.components.sensor import (
@@ -69,11 +70,21 @@ class ISSStatusSensor(ISSBaseSensor):
         data = self.coordinator.data
         if not data:
             return {}
+
+        lat = data.get("latitude")
+        lon = data.get("longitude")
+
+        # Clean up nan values for attributes
+        valid_lat = lat if lat is not None and not (isinstance(lat, float) and math.isnan(lat)) else None
+        valid_lon = lon if lon is not None and not (isinstance(lon, float) and math.isnan(lon)) else None
+
         return {
             "latitude": data.get("latitude"),
             "longitude": data.get("longitude"),
             "next_pass_time": data.get("next_pass_time"),
             "next_pass_event": data.get("next_pass_event"),
+            "crew_count": data.get("crew_count", 0),
+            "crew_members": data.get("crew_members", []),
             "source": f"Local SGP4 Engine ({self.entry.title})",
         }
 
@@ -91,7 +102,9 @@ class ISSAltitudeSensor(ISSBaseSensor):
     @override
     def native_value(self):
         if self.coordinator.data:
-            return self.coordinator.data.get("altitude_km")
+            val = self.coordinator.data.get("altitude_km")
+            if val is not None and not (isinstance(val, float) and math.isnan(val)):
+                return val
         return None
 
 class ISSMaxPassDegreesSensor(ISSBaseSensor):
@@ -108,5 +121,7 @@ class ISSMaxPassDegreesSensor(ISSBaseSensor):
     @override
     def native_value(self):
         if self.coordinator.data:
-            return self.coordinator.data.get("next_pass_max_degrees")
+            val = self.coordinator.data.get("next_pass_max_degrees")
+            if val is not None and not (isinstance(val, float) and math.isnan(val)):
+                return val
         return None

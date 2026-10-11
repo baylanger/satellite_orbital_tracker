@@ -15,6 +15,10 @@ It is an advanced, high-precision custom integration for Home Assistant that tra
 
 This integration utilizes the `skyfield` library and live CelesTrak TLE (Two-Line Element) data to perform **local SGP4 propagation**, giving you institutional-grade positional accuracy entirely offline and free of cloud dependencies.
 
+## 🤝 Contributing & Feedback
+
+Contributions, bug reports, and suggestions are always welcome! If you have an idea to make this better or run into any issues, feel free to open an issue or submit a pull request.
+
 ---
 
 ## Features
@@ -28,6 +32,7 @@ This integration utilizes the `skyfield` library and live CelesTrak TLE (Two-Lin
 - **Configurable Polling Interval**: Fine-tune your update frequency between 5 and 3600 seconds directly during setup or through the options flow.
 - **Multi-Language Support**: Fully localized with built-in translation dictionaries for English (`en`), French (`fr`), German (`de`), Español (`es`)
 - **Map Optimized**: Exposes standard latitude, longitude, and elevation attributes natively compatible with Home Assistant's Map Card.
+- **ISS Crew Members**: When tracking the ISS, the list of current in-space astronauts is extracted, every 24hrs, from [NASA Human In Space](https://www.nasa.gov/humans-in-space/astronauts/) and added to the sensor.
 
 ### Robust Error Handling & Repair Notifications
 
@@ -137,6 +142,33 @@ Map Options Explained:
 - `hours_to_show: 3.5`: Plots a trailing history line on the map so you can hover over previous points to see timestamps and direction of travel.
 - `focus: true`: Keeps this entity in view when the map moves and zooms to show your entities.
 - `theme_mode: auto`: Automatically adjusts to match your dashboard's light or dark theme mode.
+
+## Recommanded Astronauts Crew Members on ISS Card Setup
+
+```yaml
+type: markdown
+title: 🛰️ ISS (Zarya) Status & Crew
+content: >
+
+
+  Next Pass: {{ state_attr('sensor.satellite_iss_zarya_status',
+  'next_pass_event') }} at {{ state_attr('sensor.satellite_iss_zarya_status',
+  'next_pass_time') | as_timestamp | timestamp_custom('%Y-%m-%d %H:%M') }}
+
+
+  ---
+
+  ### Crew Members ({{ state_attr('sensor.satellite_iss_zarya_status',
+  'crew_count') }})
+
+  {% for member in state_attr('sensor.satellite_iss_zarya_status',
+  'crew_members') %} * **{{ member.name }}** ({{ member.agency }})
+    `{{ member.title }}`
+  {% endfor %}
+grid_options:
+  rows: 10
+  columns: 15
+```
 
 ---
 
