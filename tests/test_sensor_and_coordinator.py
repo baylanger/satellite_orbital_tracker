@@ -426,8 +426,8 @@ async def test_coordinator_first_time_404_no_repair_issue(hass: HomeAssistant) -
     issue_id = f"satellite_lost_{TEST_NORAD_ID}"
     assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
 
-async def test_coordinator_iss_structured_crew_scraping(hass: HomeAssistant, socket_enabled) -> None:
-    """Test that ISS crew scraping returns a valid roster with at least one NASA crew member."""
+async def test_coordinator_iss_structured_crew_scraping(hass: HomeAssistant) -> None:
+    """Test that ISS crew scraping returns a valid roster under the 'At the Space Station' header."""
     iss_norad_id = 25544
     config_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -469,9 +469,9 @@ async def test_coordinator_iss_structured_crew_scraping(hass: HomeAssistant, soc
             body="ISS (ZARYA)\n1 25544U...\n2 25544...",
             repeat=True,
         )
-        # Use an unanchored, highly flexible regex pattern for NASA
+        # Exact match pattern for NASA URL
         m.get(
-            re.compile(r"https?://(www\.)?nasa\.gov/humans-in-space/astronauts/?"),
+            "https://www.nasa.gov/humans-in-space/astronauts/",
             status=200,
             body=mock_nasa_html,
             repeat=True,
@@ -482,21 +482,18 @@ async def test_coordinator_iss_structured_crew_scraping(hass: HomeAssistant, soc
 
         coordinator = hass.data[DOMAIN][config_entry.entry_id]
 
-        # Trigger an explicit coordinator refresh so aioresponses intercepts the scrape
+        # Trigger an explicit coordinator refresh INSIDE the aioresponses block
         await coordinator.async_refresh()
 
-    # Now inspect the populated coordinator data safely
-    crew_data = coordinator.data["crew_members"]
-    
+        # Extract data while still inside the mock scope to be fully safe
+        crew_data = coordinator.data.get("crew_members", [])
+
     print("\n" + "="*50)
     print("LIVE PARSED ISS CREW ROSTER FROM TEST:")
     pprint(crew_data)
     print("="*50 + "\n")
 
-    # Verify the crew list is populated rather than hardcoding names
     assert len(crew_data) > 0
-
-    # Ensure at least one member belongs to NASA based on our parsing logic
     nasa_members = [member for member in crew_data if member["agency"] == "NASA"]
     assert len(nasa_members) > 0
 

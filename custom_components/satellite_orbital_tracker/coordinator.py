@@ -13,6 +13,7 @@ from skyfield.api import EarthSatellite, load, wgs84
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -178,55 +179,51 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         headers = {"User-Agent": "HomeAssistant-SatelliteOrbitalTracker/2.0"}
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=headers, timeout=15) as response:
-                    if response.status != 200:
-                        return self.crew_members or []
+            # Use Home Assistant's global shared session so aioresponses cleanly intercepts it
+            session = async_get_clientsession(self.hass)
+            async with session.get(url, headers=headers, timeout=15) as response:
+                if response.status != 200:
+                    return self.crew_members or []
 
-                    html_text = await response.text()
-                    soup = BeautifulSoup(html_text, "html.parser")
-                    crew_list = []
+                html_text = await response.text()
+                soup = BeautifulSoup(html_text, "html.parser")
+                crew_list = []
 
-                    # Scope scraper strictly to cards under the "At the Space Station" section header
-                    station_header = soup.find(lambda tag: tag.name in ["h2", "h3"] and "At the Space Station" in tag.text)
-                    if station_header:
-                        module_container = station_header.find_parent("div", class_="hds-module")
-                        cards = module_container.find_all("div", class_="hds-meet-the-card") if module_container else soup.find_all("div", class_="hds-meet-the-card")
-                    else:
-                        cards = soup.find_all("div", class_="hds-meet-the-card")
+                station_header = soup.find(lambda tag: tag.name in ["h2", "h3"] and "At the Space Station" in tag.text)
+                if station_header:
+                    module_container = station_header.find_parent("div", class_="hds-module")
+                    cards = module_container.find_all("div", class_="hds-meet-the-card") if module_container else soup.find_all("div", class_="hds-meet-the-card")
+                else:
+                    cards = soup.find_all("div", class_="hds-meet-the-card")
 
-                    if not cards and html_text:
-                        _LOGGER.warning("NASA astronaut page returned 200 OK, but 0 crew cards were found under the space station section.")
+                for card in cards:
+                    name_header = card.find("h3")
+                    bio_p = card.find("p")
 
-                    for card in cards:
-                        name_header = card.find("h3")
-                        bio_p = card.find("p")
+                    if name_header:
+                        name = name_header.get_text(strip=True)
+                        bio_text = bio_p.get_text(strip=True) if bio_p else ""
 
-                        if name_header:
-                            name = name_header.get_text(strip=True)
-                            bio_text = bio_p.get_text(strip=True) if bio_p else ""
+                        agency = "Unknown"
+                        if "Roscosmos" in bio_text or "cosmonaut" in bio_text.lower():
+                            agency = "Roscosmos"
+                        elif "CSA" in bio_text or "Canadian" in bio_text:
+                            agency = "CSA"
+                        elif "NASA" in bio_text:
+                            agency = "NASA"
 
-                            agency = "Unknown"
-                            if "Roscosmos" in bio_text or "cosmonaut" in bio_text.lower():
-                                agency = "Roscosmos"
-                            elif "CSA" in bio_text or "Canadian" in bio_text:
-                                agency = "CSA"
-                            elif "NASA" in bio_text:
-                                agency = "NASA"
+                        exp_match = re.search(r"Expedition\s+[\d/]+", bio_text, re.IGNORECASE)
+                        expedition = exp_match.group(0) if exp_match else None
 
-                            exp_match = re.search(r"Expedition\s+[\d/]+", bio_text, re.IGNORECASE)
-                            expedition = exp_match.group(0) if exp_match else None
+                        crew_list.append({
+                            "name": name,
+                            "agency": agency,
+                            "title": bio_text,
+                            "expedition": expedition
+                        })
 
-                            crew_list.append({
-                                "name": name,
-                                "agency": agency,
-                                "title": bio_text,
-                                "expedition": expedition
-                            })
-
-                    if crew_list:
-                        _LOGGER.debug("Successfully parsed %d structured ISS crew members", len(crew_list))
-                        return crew_list
+                if crew_list:
+                    return crew_list
         except Exception as err:
             _LOGGER.debug("Failed to parse detailed NASA crew page: %s", err)
 
