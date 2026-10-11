@@ -1,15 +1,17 @@
 {
   "domain": "satellite_orbital_tracker",
   "name": "Satellite Orbital Tracker",
-  "codeowners": ["@baylanger"],
+  "codeowners": [
+    "@baylanger"
+  ],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/baylanger/satellite_orbital_tracker",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/baylanger/satellite_orbital_tracker/issues",
   "requirements": [
-    "beautifulsoup4",
-    "skyfield>=1.55"
+    "skyfield==1.55",
+    "beautifulsoup4"
   ],
   "version": "v1.0.6"
 }

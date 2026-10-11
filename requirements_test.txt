@@ -1,5 +1,6 @@
 # Runtime dependencies needed during test execution
 -r requirements.txt
+probatio
 
 # Testing frameworks and mock tools
 pytest-homeassistant-custom-component>=0.13.316
