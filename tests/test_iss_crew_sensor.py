@@ -5,29 +5,43 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from aioresponses import aioresponses
+from freezegun.api import FrozenDateTimeFactory
+import re
 
 from custom_components.satellite_orbital_tracker.const import DOMAIN
 
-async def test_iss_crew_sensor_attributes(hass: HomeAssistant) -> None:
-    """Test that crew count and structured member dictionaries appear in sensor attributes."""
-    iss_norad_id = 25544
+from conftest import (
+    ISS_NORAD_ID,
+    ISS_SATELLITE_NAME,
+    ISS_TLE_LINE1,
+    ISS_TLE_LINE2,
+)
+
+async def test_iss_crew_sensor_attributes(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Test that crew count and structured member dictionaries appear correctly in sensor state attributes."""
+    # Freeze time to a deterministic starting timestamp for consistency
+    start_time = datetime(2026, 10, 11, 12, 0, 0, tzinfo=timezone.utc)
+    freezer.move_to(start_time)
+
     config_entry = MockConfigEntry(
         domain=DOMAIN,
-        title="ISS (ZARYA)",
-        data={"norad_id": iss_norad_id, "update_interval": 120},
+        title=ISS_SATELLITE_NAME,
+        data={"norad_id": ISS_NORAD_ID, "update_interval": 120},
     )
     config_entry.add_to_hass(hass)
 
-    # Pre-seed store so TLE loads successfully from disk cache
-    store = Store(hass, 1, f"{DOMAIN}_{iss_norad_id}")
+    # Pre-seed Home Assistant persistent storage store with valid TLE cache matching frozen timestamp
+    store = Store(hass, 1, f"{DOMAIN}_{ISS_NORAD_ID}")
     await store.async_save({
-        "line1": "1 25544U 98067A   26080.50000000  .00016717  00000-0  30175-3 0  9999",
-        "line2": "2 25544  51.6416 247.4627 0006703 130.5360 329.5445 15.49815350414522",
-        "name": "ISS (ZARYA)",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "line1": ISS_TLE_LINE1,
+        "line2": ISS_TLE_LINE2,
+        "name": ISS_SATELLITE_NAME,
+        "timestamp": start_time.isoformat(),
     })
 
-    # Mock NASA HTML block response matching the meet-the-card structure
+    # Mock HTML structure mirroring NASA's astronaut page format for crew parsing tests
     mock_nasa_html = """
     <div class="hds-meet-the-card padding-right-7">
         <div class="hds-meet-the-content">
@@ -43,28 +57,28 @@ async def test_iss_crew_sensor_attributes(hass: HomeAssistant) -> None:
     </div>
     """
 
+    # Mock network endpoints for both CelesTrak TLE fetching and NASA astronaut scraping
     with aioresponses() as m:
-        # Mock CelesTrak TLE request
         m.get(
-            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={iss_norad_id}&FORMAT=tle",
+            re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$"),
             status=200,
-            body="ISS (ZARYA)\n1 25544U...\n2 25544...",
+            body=f"{ISS_SATELLITE_NAME}\n{ISS_TLE_LINE1}\n{ISS_TLE_LINE2}",
         )
-        # Mock NASA astronaut HTML page request
         m.get(
             "https://www.nasa.gov/humans-in-space/astronauts/",
             status=200,
             body=mock_nasa_html,
         )
 
+        # Set up integration entry and wait for background tasks to complete
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
-    # Retrieve the registered sensor state entity
+    # Retrieve the registered main status sensor entity state from Home Assistant state machine
     state = hass.states.get("sensor.satellite_iss_zarya_status")
     assert state is not None
 
-    # Verify attributes contain expected crew data structures
+    # Verify attributes contain expected crew count and parsed data structures
     attributes = state.attributes
     assert attributes.get("crew_count") == 2
 
@@ -72,12 +86,12 @@ async def test_iss_crew_sensor_attributes(hass: HomeAssistant) -> None:
     assert isinstance(crew_members, list)
     assert len(crew_members) == 2
 
-    # Check first astronaut (NASA)
+    # Validate first astronaut (NASA) attributes and expedition parsing
     assert crew_members[0]["name"] == "Anil Menon"
     assert crew_members[0]["agency"] == "NASA"
     assert crew_members[0]["expedition"] == "Expedition 74/75"
 
-    # Check second astronaut (Roscosmos)
+    # Validate second astronaut (Roscosmos) attributes and expedition parsing
     assert crew_members[1]["name"] == "Pyotr Dubrov"
     assert crew_members[1]["agency"] == "Roscosmos"
     assert crew_members[1]["expedition"] == "Expedition 74/75"

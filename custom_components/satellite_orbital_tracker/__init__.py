@@ -8,20 +8,29 @@ from .const import DOMAIN
 from .coordinator import SatelliteDataUpdateCoordinator
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Satellite Orbital Tracker from a config entry."""
+    """Set up Satellite Orbital Tracker from a config entry in Home Assistant."""
+    # Ensure the domain container dictionary exists within hass.data
     hass.data.setdefault(DOMAIN, {})
 
+    # Initialize the data update coordinator for this specific satellite config entry
     coordinator = SatelliteDataUpdateCoordinator(hass, entry)
+
+    # Perform the initial data fetch so sensor entities have valid state immediately upon load
     await coordinator.async_config_entry_first_refresh()
 
+    # Store the coordinator instance keyed by the unique entry ID
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
+    # Forward setup request to the sensor platform
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
+    """Unload a config entry and clean up associated coordinator resources and platforms."""
+    # Unload sensor platforms safely
     unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor"])
+
+    # Remove the coordinator instance from hass.data if platform cleanup succeeded
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
 

@@ -81,7 +81,7 @@ In Home Assistant,
 You can later adjust the polling update interval at any time by clicking the **Configure** (gear) button on the integration entry in your UI.
 
 ### Finding Satellite Catalog Numbers (`norad_id`)
-You can look up the unique NORAD Catalog Number (CATNR) for any spacecraft using the [CelesTrak Satellite Catalog (SATCAT)](https://celestrak.org/satcat/search.php). 
+You can look up the unique NORAD Catalog Number (CATNR) for any spacecraft using the [CelesTrak Satellite Catalog (SATCAT)](https://celestrak.org/satcat/search.php).
 
 * **Popular Presets:**
   * **ISS (Zarya):** `25544` (International Space Station)

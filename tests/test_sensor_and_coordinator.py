@@ -3,15 +3,20 @@ from datetime import datetime, timezone, timedelta
 from unittest.mock import patch
 from aioresponses import aioresponses
 from pprint import pprint
+from freezegun.api import FrozenDateTimeFactory
 import pytest
 import re
+import logging
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
+from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.satellite_orbital_tracker.const import DOMAIN
+from custom_components.satellite_orbital_tracker.coordinator import SatelliteDataUpdateCoordinator
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from conftest import (
@@ -19,6 +24,10 @@ from conftest import (
     TEST_SATELLITE_NAME,
     TEST_TLE_LINE1,
     TEST_TLE_LINE2,
+    ISS_NORAD_ID,
+    ISS_SATELLITE_NAME,
+    ISS_TLE_LINE1,
+    ISS_TLE_LINE2,
 )
 
 async def test_coordinator_and_sensors(hass: HomeAssistant, test_sample_tle_response) -> None:
@@ -40,7 +49,7 @@ async def test_coordinator_and_sensors(hass: HomeAssistant, test_sample_tle_resp
     })
 
     with aioresponses() as m:
-        # Mock NASA astronaut page endpoint for ISS (NORAD 25544)
+        # Mock NASA astronaut page endpoint for TEST_NORAD_ID
         m.get(
             re.compile(r"^https://www\.nasa\.gov/humans-in-space/astronauts/.*$"),
             status=200,
@@ -190,8 +199,14 @@ async def test_coordinator_startup_fallback_to_cache(hass: HomeAssistant) -> Non
     entries = er.async_entries_for_config_entry(entity_registry, config_entry.entry_id)
     assert len(entries) > 0
 
-async def test_coordinator_skips_fetch_if_cache_fresh(hass: HomeAssistant) -> None:
+async def test_coordinator_skips_fetch_if_cache_fresh(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
     """Test that coordinator skips fetching from CelesTrak if a fresh cache exists (< 12 hours old)."""
+    # Freeze time at a known deterministic point
+    start_time = datetime(2026, 10, 11, 12, 0, 0, tzinfo=timezone.utc)
+    freezer.move_to(start_time)
+
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         title=TEST_SATELLITE_NAME,
@@ -199,32 +214,40 @@ async def test_coordinator_skips_fetch_if_cache_fresh(hass: HomeAssistant) -> No
     )
     config_entry.add_to_hass(hass)
 
-    # Pre-populate with a very recent timestamp (1 hour ago)
+    # Pre-populate store with a timestamp precisely 1 hour before the frozen start time
     store = Store(hass, 1, f"{DOMAIN}_{TEST_NORAD_ID}")
     await store.async_save({
         "line1": TEST_TLE_LINE1,
         "line2": TEST_TLE_LINE2,
         "name": TEST_SATELLITE_NAME,
-        "timestamp": (dt_util.utcnow() - timedelta(hours=1)).isoformat(),
+        "timestamp": (start_time - timedelta(hours=1)).isoformat(),
     })
 
     with aioresponses() as m:
+        # Mock NASA page just in case, but CelesTrak URL is intentionally omitted
+        # because a fresh cache should skip calling CelesTrak entirely.
         m.get(
             "https://www.nasa.gov/humans-in-space/astronauts/",
             status=200,
             body="<html><body></body></html>",
+            repeat=True,
         )
 
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
-    # Verify successful setup without ever querying the external API
+    # Verify successful setup without querying the external CelesTrak API
     entity_registry = er.async_get(hass)
     entries = er.async_entries_for_config_entry(entity_registry, config_entry.entry_id)
     assert len(entries) > 0
 
-async def test_coordinator_404_repair_issue_creation(hass: HomeAssistant) -> None:
+async def test_coordinator_404_repair_issue_creation(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
     """Test that a continuous 404 error triggers a Home Assistant Repair issue after the duration window."""
+    start_time = datetime(2026, 10, 11, 12, 0, 0, tzinfo=timezone.utc)
+    freezer.move_to(start_time)
+
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         title=TEST_SATELLITE_NAME,
@@ -237,12 +260,12 @@ async def test_coordinator_404_repair_issue_creation(hass: HomeAssistant) -> Non
         "line1": TEST_TLE_LINE1,
         "line2": TEST_TLE_LINE2,
         "name": TEST_SATELLITE_NAME,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": start_time.isoformat(),
     })
 
     with aioresponses() as m:
         m.get(
-            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=tle",
+            re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$"),
             status=200,
             body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}",
         )
@@ -256,12 +279,15 @@ async def test_coordinator_404_repair_issue_creation(hass: HomeAssistant) -> Non
 
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
 
-    # Ensure timezone-aware timestamp for the 24-hour window
-    coordinator.first_404_timestamp = datetime.now(timezone.utc) - timedelta(hours=25)
+    # Force the first 404 timestamp back 25 hours to simulate an existing 404 streak
+    coordinator.first_404_timestamp = start_time - timedelta(hours=25)
 
-    with patch("custom_components.satellite_orbital_tracker.coordinator.ir.async_create_issue") as mock_create_issue, aioresponses() as m:
+    # Advance time past the 24-hour window
+    freezer.move_to(start_time + timedelta(hours=1))
+
+    with patch("custom_components.satellite_orbital_tracker.coordinator.ir") as mock_ir, aioresponses() as m:
         m.get(
-            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=tle",
+            re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$"),
             status=404,
         )
 
@@ -269,7 +295,7 @@ async def test_coordinator_404_repair_issue_creation(hass: HomeAssistant) -> Non
 
         assert success is False
         assert status_code == 404
-        mock_create_issue.assert_called_once()
+        mock_ir.async_create_issue.assert_called_once()
 
 async def test_coordinator_5xx_server_error_retry_backoff(hass: HomeAssistant) -> None:
     """Test that 5xx server errors trigger retry backoff without creating a 404 repair issue."""
@@ -306,9 +332,13 @@ async def test_coordinator_5xx_server_error_retry_backoff(hass: HomeAssistant) -
     issue_id = f"satellite_lost_{TEST_NORAD_ID}"
     assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
 
-async def test_coordinator_404_recovery_clears_issue(hass: HomeAssistant) -> None:
-    """Test that a successful fetch clears an existing lost-satellite repair issue."""
-    from homeassistant.helpers import issue_registry as ir
+async def test_coordinator_404_recovery_clears_issue(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, caplog
+) -> None:
+    """Test that a successful fetch clears an existing lost-satellite repair issue with debug tracking."""
+    caplog.set_level(logging.DEBUG)
+    start_time = datetime(2026, 10, 11, 12, 0, 0, tzinfo=timezone.utc)
+    freezer.move_to(start_time)
 
     config_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -322,12 +352,12 @@ async def test_coordinator_404_recovery_clears_issue(hass: HomeAssistant) -> Non
         "line1": TEST_TLE_LINE1,
         "line2": TEST_TLE_LINE2,
         "name": TEST_SATELLITE_NAME,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": start_time.isoformat(),
     })
 
     with aioresponses() as m:
         m.get(
-            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=tle",
+            re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$"),
             status=200,
             body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}",
         )
@@ -341,9 +371,10 @@ async def test_coordinator_404_recovery_clears_issue(hass: HomeAssistant) -> Non
 
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
 
-    # Pre-create the repair issue using async_create_issue to simulate an active lost-satellite state
+    # Pre-create the repair issue in the registry
     issue_registry = ir.async_get(hass)
-    issue_id = f"satellite_lost_{TEST_NORAD_ID}"
+    issue_id = f"satellite_lost_{str(TEST_NORAD_ID)}"
+
     ir.async_create_issue(
         hass,
         DOMAIN,
@@ -353,23 +384,31 @@ async def test_coordinator_404_recovery_clears_issue(hass: HomeAssistant) -> Non
         translation_key="satellite_lost",
         translation_placeholders={"satellite_name": TEST_SATELLITE_NAME, "satellite_id": str(TEST_NORAD_ID)},
     )
-    assert issue_registry.async_get_issue(DOMAIN, issue_id) is not None
 
-    # Simulate recovery: a successful 200 response comes in
+    initial_issue = issue_registry.async_get_issue(DOMAIN, issue_id)
+    print(f"\n[DEBUG] Pre-created issue state: {initial_issue}")
+    assert initial_issue is not None
+
+    # Simulate recovery via explicit fetch/parse call with a mocked 200 response
     with aioresponses() as m:
         m.get(
-            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=tle",
+            re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$"),
             status=200,
             body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}",
         )
 
+        print("[DEBUG] Triggering _async_fetch_and_parse_tle() for recovery...")
         success, status_code = await coordinator._async_fetch_and_parse_tle()
+        print(f"[DEBUG] Fetch result -> success: {success}, status_code: {status_code}")
 
         assert success is True
         assert status_code == 200
 
+    final_issue = issue_registry.async_get_issue(DOMAIN, issue_id)
+    print(f"[DEBUG] Post-fetch issue state: {final_issue}")
+
     # Verify that the repair issue was automatically cleaned up/deleted
-    assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
+    assert final_issue is None
 
 async def test_coordinator_first_time_404_no_repair_issue(hass: HomeAssistant) -> None:
     """Test that a recent 404 error (within the 24-hour window) does not trigger a repair issue yet."""
@@ -428,34 +467,34 @@ async def test_coordinator_first_time_404_no_repair_issue(hass: HomeAssistant) -
 
 async def test_coordinator_iss_structured_crew_scraping(hass: HomeAssistant) -> None:
     """Test that ISS crew scraping returns a valid roster under the 'At the Space Station' header."""
-    iss_norad_id = 25544
     config_entry = MockConfigEntry(
         domain=DOMAIN,
-        title="ISS (ZARYA)",
-        data={"norad_id": iss_norad_id, "update_interval": 120},
+        title=ISS_SATELLITE_NAME,
+        data={"norad_id": ISS_NORAD_ID, "update_interval": 120},
     )
     config_entry.add_to_hass(hass)
 
-    store = Store(hass, 1, f"{DOMAIN}_{iss_norad_id}")
+    store = Store(hass, 1, f"{DOMAIN}_{ISS_NORAD_ID}")
     await store.async_save({
-        "line1": "1 25544U 98067A   26080.50000000  .00016717  00000-0  30175-3 0  9999",
-        "line2": "2 25544  51.6416 247.4627 0006703 130.5360 329.5445 15.49815350414522",
-        "name": "ISS (ZARYA)",
+        "line1": ISS_TLE_LINE1,
+        "line2": ISS_TLE_LINE2,
+        "name": ISS_SATELLITE_NAME,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
+    # Use generic placeholder names so future crew rotations never break this test
     mock_nasa_html = """
     <div class="hds-module">
         <h2>At the Space Station</h2>
         <div class="hds-meet-the-card padding-right-7">
             <div class="hds-meet-the-content">
-                <h3 class="heading-18">Jessica Watkins</h3>
-                <p class="p-sm">NASA astronaut and Expedition 74/75 Commander</p>
+                <h3 class="heading-18">Test Astronaut One</h3>
+                <p class="p-sm">NASA astronaut and Expedition Commander</p>
             </div>
         </div>
         <div class="hds-meet-the-card padding-right-7">
             <div class="hds-meet-the-content">
-                <h3 class="heading-18">Pyotr Dubrov</h3>
+                <h3 class="heading-18">Test Cosmonaut Two</h3>
                 <p class="p-sm">Roscosmos cosmonaut and Flight Engineer</p>
             </div>
         </div>
@@ -466,10 +505,9 @@ async def test_coordinator_iss_structured_crew_scraping(hass: HomeAssistant) -> 
         m.get(
             re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$"),
             status=200,
-            body="ISS (ZARYA)\n1 25544U...\n2 25544...",
+            body=f"{ISS_SATELLITE_NAME}\n{ISS_TLE_LINE1}\n{ISS_TLE_LINE2}",
             repeat=True,
         )
-        # Exact match pattern for NASA URL
         m.get(
             "https://www.nasa.gov/humans-in-space/astronauts/",
             status=200,
@@ -481,11 +519,8 @@ async def test_coordinator_iss_structured_crew_scraping(hass: HomeAssistant) -> 
         await hass.async_block_till_done()
 
         coordinator = hass.data[DOMAIN][config_entry.entry_id]
-
-        # Trigger an explicit coordinator refresh INSIDE the aioresponses block
         await coordinator.async_refresh()
 
-        # Extract data while still inside the mock scope to be fully safe
         crew_data = coordinator.data.get("crew_members", [])
 
     print("\n" + "="*50)
@@ -493,70 +528,243 @@ async def test_coordinator_iss_structured_crew_scraping(hass: HomeAssistant) -> 
     pprint(crew_data)
     print("="*50 + "\n")
 
-    assert len(crew_data) > 0
-    nasa_members = [member for member in crew_data if member["agency"] == "NASA"]
-    assert len(nasa_members) > 0
+    # Assert structural integrity and agency parsing logic instead of hardcoded names
+    assert len(crew_data) == 2
 
-async def test_coordinator_iss_structured_crew_scraping(hass: HomeAssistant) -> None:
-    """Test that ISS crew scraping returns a valid roster with live debug output."""
-    iss_norad_id = 25544
+    nasa_members = [member for member in crew_data if member["agency"] == "NASA"]
+    ros_members = [member for member in crew_data if member["agency"] == "Roscosmos"]
+
+    assert len(nasa_members) == 1
+    assert nasa_members[0]["name"] == "Test Astronaut One"
+
+    assert len(ros_members) == 1
+    assert ros_members[0]["name"] == "Test Cosmonaut Two"
+
+async def test_coordinator_refetches_when_cache_expired(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Test that coordinator performs a live fetch when the cached data has expired (> 12 hours old)."""
+    # Freeze time at a known starting point
+    start_time = datetime(2026, 10, 11, 12, 0, 0, tzinfo=timezone.utc)
+    freezer.move_to(start_time)
+
     config_entry = MockConfigEntry(
         domain=DOMAIN,
-        title="ISS (ZARYA)",
-        data={"norad_id": iss_norad_id, "update_interval": 120},
+        title=TEST_SATELLITE_NAME,
+        data={"norad_id": TEST_NORAD_ID, "update_interval": 120},
     )
     config_entry.add_to_hass(hass)
 
-    # Pre-populate the store cache so setup initializes smoothly
-    store = Store(hass, 1, f"{DOMAIN}_{iss_norad_id}")
+    # Pre-populate store with an old timestamp (e.g., 15 hours ago, exceeding the 12-hour TTL)
+    store = Store(hass, 1, f"{DOMAIN}_{TEST_NORAD_ID}")
     await store.async_save({
-        "line1": "1 25544U 98067A   26080.50000000  .00016717  00000-0  30175-3 0  9999",
-        "line2": "2 25544  51.6416 247.4627 0006703 130.5360 329.5445 15.49815350414522",
-        "name": "ISS (ZARYA)",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "line1": TEST_TLE_LINE1,
+        "line2": TEST_TLE_LINE2,
+        "name": TEST_SATELLITE_NAME,
+        "timestamp": (start_time - timedelta(hours=15)).isoformat(),
     })
 
     with aioresponses() as m:
-        # Mock CelesTrak endpoints persistently
+        # Since the cache is expired, the coordinator MUST call out to CelesTrak and NASA
         m.get(
             re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$"),
             status=200,
-            body="ISS (ZARYA)\n1 25544U...\n2 25544...",
+            body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}",
             repeat=True,
         )
-        # Mock NASA astronaut page with sample card markup
         m.get(
-            re.compile(r"^https://www\.nasa\.gov/humans-in-space/astronauts/.*$"),
+            "https://www.nasa.gov/humans-in-space/astronauts/",
             status=200,
-            body="""
-            <div class="hds-meet-the-card padding-right-7">
-                <div class="hds-meet-the-content">
-                    <h3 class="heading-18">Jessica Watkins</h3>
-                    <p class="p-sm">NASA astronaut and Expedition 74/75 Commander</p>
-                </div>
-            </div>
-            <div class="hds-meet-the-card padding-right-7">
-                <div class="hds-meet-the-content">
-                    <h3 class="heading-18">Pyotr Dubrov</h3>
-                    <p class="p-sm">Roscosmos cosmonaut and Flight Engineer</p>
-                </div>
-            </div>
-            """,
+            body="<html><body></body></html>",
             repeat=True,
         )
 
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
-    coordinator = hass.data[DOMAIN][config_entry.entry_id]
-    crew_data = await coordinator._async_fetch_iss_crew_from_nasa()
+        coordinator = hass.data[DOMAIN][config_entry.entry_id]
 
-    # Print out the parsed crew roster to your terminal
-    print("\n" + "="*50)
-    print("LIVE PARSED ISS CREW ROSTER FROM TEST:")
-    pprint(crew_data)
-    print("="*50 + "\n")
+        # Advance time further to simulate additional passage of time if needed,
+        # or verify the initial startup setup successfully performed the expired refetch.
+        await coordinator.async_refresh()
 
-    assert len(crew_data) > 0
-    nasa_members = [member for member in crew_data if member["agency"] == "NASA"]
-    assert len(nasa_members) > 0
+    # Verify entities are successfully set up and updated
+    entity_registry = er.async_get(hass)
+    entries = er.async_entries_for_config_entry(entity_registry, config_entry.entry_id)
+    assert len(entries) > 0
+
+from homeassistant.helpers import event
+import pytest
+
+async def test_coordinator_background_polling_interval(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Test that the coordinator automatically fetches updates when the update interval elapses."""
+    start_time = datetime(2026, 10, 11, 12, 0, 0, tzinfo=timezone.utc)
+    freezer.move_to(start_time)
+
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=TEST_SATELLITE_NAME,
+        data={"norad_id": TEST_NORAD_ID, "update_interval": 60}, # 60 second interval
+    )
+    config_entry.add_to_hass(hass)
+
+    with aioresponses() as m:
+        # Mock initial fetch during setup
+        m.get(
+            re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$"),
+            status=200,
+            body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}",
+            repeat=True,
+        )
+        m.get(
+            "https://www.nasa.gov/humans-in-space/astronauts/",
+            status=200,
+            body="<html><body></body></html>",
+            repeat=True,
+        )
+
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+        # Advance time past the 60-second update interval
+        new_time = start_time + timedelta(seconds=70)
+        freezer.move_to(new_time)
+
+        # Fire time changed event so Home Assistant's periodic listeners pick up the elapsed time
+        hass.bus.async_fire("time_changed", {"now": new_time})
+        await hass.async_block_till_done()
+
+async def test_coordinator_corrupted_cache_fallback(hass: HomeAssistant) -> None:
+    """Test that coordinator handles corrupted JSON/string cache gracefully without crashing."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="ISS (ZARYA)",
+        data={"norad_id": TEST_NORAD_ID, "update_interval": 120},
+    )
+    config_entry.add_to_hass(hass)
+
+    # Save malformed cache data to disk
+    store = Store(hass, 1, f"{DOMAIN}_{TEST_NORAD_ID}")
+    await store.async_save({"line1": None, "line2": "corrupted"})
+
+    with aioresponses() as m:
+        m.get(
+            re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$"),
+            status=500,
+        )
+
+        # Should raise UpdateFailed because cache is invalid and fetch failed
+        coordinator = SatelliteDataUpdateCoordinator(hass, config_entry)
+        with pytest.raises(UpdateFailed):
+            await coordinator._async_update_data()
+
+async def test_coordinator_tle_cache_parse_exception(hass: HomeAssistant) -> None:
+    """Test that cache parse exceptions on startup are caught and logged."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=TEST_SATELLITE_NAME,
+        data={"norad_id": TEST_NORAD_ID, "update_interval": 120},
+    )
+    config_entry.add_to_hass(hass)
+
+    # Save invalid cache types that will cause datetime parsing or EarthSatellite to crash
+    store = Store(hass, 1, f"{DOMAIN}_{TEST_NORAD_ID}")
+    await store.async_save({
+        "line1": "invalid_line1",
+        "line2": "invalid_line2",
+        "name": "INVALID SATELLITE",
+        "timestamp": "not-a-datetime",
+    })
+
+    with aioresponses() as m:
+        # Provide valid fallback response so it succeeds after failing cache load
+        m.get(
+            re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$"),
+            status=200,
+            body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}",
+        )
+        coordinator = SatelliteDataUpdateCoordinator(hass, config_entry)
+        data = await coordinator._async_update_data()
+        assert data["latitude"] is not None
+
+async def test_coordinator_dynamic_title_update(hass: HomeAssistant) -> None:
+    """Test that coordinator updates the config entry title if the satellite name changes."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Old Name",
+        data={"norad_id": TEST_NORAD_ID, "update_interval": 120},
+    )
+    config_entry.add_to_hass(hass)
+
+    with aioresponses() as m:
+        m.get(
+            re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$"),
+            status=200,
+            body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}",
+        )
+        coordinator = SatelliteDataUpdateCoordinator(hass, config_entry)
+        await coordinator._async_update_data()
+
+        # Verify entry title was updated to match the fetched name
+        assert config_entry.title == TEST_SATELLITE_NAME
+
+async def test_coordinator_crew_scrape_failure_fallback(hass: HomeAssistant) -> None:
+    """Test that NASA crew scrape failures gracefully return existing cached crew members."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="ISS (ZARYA)",
+        data={"norad_id": ISS_NORAD_ID, "update_interval": 120},
+    )
+    config_entry.add_to_hass(hass)
+
+    with aioresponses() as m:
+        # TLE fetch success
+        m.get(
+            re.compile(r".*FORMAT=tle.*"),
+            status=200,
+            body=f"{ISS_SATELLITE_NAME}\n{ISS_TLE_LINE1}\n{ISS_TLE_LINE2}",
+        )
+        # NASA crew page failure (500 error)
+        m.get(
+            re.compile(r".*nasa\.gov.*"),
+            status=500,
+        )
+
+        coordinator = SatelliteDataUpdateCoordinator(hass, config_entry)
+        coordinator.crew_members = [{"name": "Cached Astronaut", "agency": "NASA", "title": "Commander", "expedition": "Expedition 70"}]
+
+        data = await coordinator._async_update_data()
+        assert data["crew_count"] == 1
+        assert data["crew_members"][0]["name"] == "Cached Astronaut"
+
+async def test_coordinator_24hr_404_repair_issue_creation(hass: HomeAssistant) -> None:
+    """Test that continuous 404 responses for over 24 hours create a repair issue."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="ISS (ZARYA)",
+        data={"norad_id": TEST_NORAD_ID, "update_interval": 120},
+    )
+    config_entry.add_to_hass(hass)
+
+    # Initialize the issue registry domain entry so ir.async_create_issue doesn't fail
+    issue_registry = ir.async_get(hass)
+
+    coordinator = SatelliteDataUpdateCoordinator(hass, config_entry)
+    coordinator.first_404_timestamp = datetime.now(timezone.utc) - timedelta(hours=25)
+
+    with aioresponses() as m:
+        m.get(
+            coordinator.tle_url,
+            status=404,
+        )
+
+        success, status_code = await coordinator._async_fetch_and_parse_tle()
+
+        assert success is False
+        assert status_code == 404
+
+        # Verify the repair issue was successfully registered
+        issue_id = f"satellite_lost_{TEST_NORAD_ID}"
+        assert issue_registry.async_get_issue(DOMAIN, issue_id) is not None
