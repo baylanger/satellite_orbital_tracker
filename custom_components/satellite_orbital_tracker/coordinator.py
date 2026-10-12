@@ -21,7 +21,7 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# TLE polling, retry intervals, and crew fetch frequency
+# TLE polling, retry intervals, and crew fetch frequency constants
 TLE_FETCH_INTERVAL = timedelta(hours=12)      # Normal interval between successful fetches
 TLE_RETRY_INTERVAL = timedelta(hours=1)       # Shorter retry interval if the last fetch failed
 LOST_SATELLITE_WINDOW = timedelta(hours=24)   # Duration of continuous 404s before raising a repair issue
@@ -31,13 +31,13 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
     """Data update coordinator for tracking a specific satellite."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        """Initialize coordinator."""
+        """Initialize coordinator and configure tracking endpoints and schedules."""
         self.entry = entry
         self.satellite_id = entry.data["norad_id"]
         self.satellite_name = f"Satellite {self.satellite_id}"
         self.tle_url = f"https://celestrak.org/NORAD/elements/gp.php?CATNR={self.satellite_id}&FORMAT=tle"
 
-        # Initialize Home Assistant Store helper for persistent disk caching
+        # Initialize Home Assistant Store helper for persistent disk caching of TLE elements
         self.store = Store(hass, 1, f"{DOMAIN}_{self.satellite_id}")
 
         # Fetch configured sensor position update interval (default to 120s, minimum enforced at 5s)
@@ -50,7 +50,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=update_interval_sec),
         )
 
-        # Listen for option changes so the interval updates live without restarting
+        # Listen for option changes so the interval updates live without restarting Home Assistant
         entry.async_on_unload(entry.add_update_listener(self.async_update_listener))
 
         self.ts = load.timescale()
@@ -58,10 +58,11 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         self.last_tle_fetch = None        # Timestamp of last SUCCESSFUL fetch
         self.last_tle_attempt = None      # Timestamp of last fetch ATTEMPT (success or fail)
         self.last_fetch_status = 200      # Track HTTP status code of the last attempt
-        self.first_404_timestamp = None   # Tracks when a continuous 404 streak started
+        self.first_404_timestamp = None   # Tracks when a continuous 404 missing satellite streak started
         self.crew_members = []            # Cached list of current ISS crew members
         self.last_crew_fetch = None       # Timestamp of last successful crew scrape
 
+        # Set up Home Assistant instance geographic coordinates as default observer for pass calculations
         self.home_observer = wgs84.latlon(
             latitude_degrees=self.hass.config.latitude,
             longitude_degrees=self.hass.config.longitude,
@@ -70,16 +71,16 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
 
     @staticmethod
     async def async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-        """Handle options update by reloading the config entry."""
+        """Handle options update by reloading the config entry dynamically."""
         await hass.config_entries.async_reload(entry.entry_id)
 
     @override
     async def _async_update_data(self):
-        """Fetch TLE (if interval elapsed), compute position, and find next pass."""
+        """Fetch TLE (if interval elapsed), compute satellite subpoint position, and find upcoming passes."""
         try:
             now = datetime.now(timezone.utc)
 
-            # 1. If in-memory satellite is not loaded, try loading from disk store first
+            # 1. If in-memory satellite object is not loaded, attempt loading from disk store cache first
             if self.satellite is None:
                 stored_data = await self.store.async_load()
                 if stored_data:
@@ -113,15 +114,17 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
 
                 if not success:
                     if self.satellite is not None:
+                        # Graceful fallback: log warning and continue using stale cached orbital elements
                         _LOGGER.warning(
                             "Failed to fetch fresh TLE from CelesTrak (Status: %s). Using cached TLE data for %s.",
                             status_code,
                             self.satellite_name
                         )
                     else:
+                        # Hard failure if network fails and no local cache exists at all
                         raise UpdateFailed(f"Failed to download TLE data and no cache exists for {self.satellite_name}.")
 
-            # 3. Fetch structured ISS crew manifest once a day if tracking the ISS (NORAD ID 25544)
+            # 3. Fetch structured ISS crew manifest once a day if tracking the International Space Station (NORAD ID 25544)
             crew_data = self.crew_members
             if str(self.satellite_id) == "25544":
                 time_since_crew_fetch = (now - self.last_crew_fetch) if self.last_crew_fetch else None
@@ -132,6 +135,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                         self.last_crew_fetch = now
                 crew_data = self.crew_members
 
+            # 4. Perform Skyfield vector calculations for current geographic subpoint and pass timings
             t = self.ts.from_datetime(now)
             geocentric = self.satellite.at(t)
             subpoint = wgs84.subpoint(geocentric)
@@ -142,6 +146,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
 
             next_pass = self._calculate_next_pass(now)
 
+            # Determine tracker status string based on upcoming pass proximity
             state_val = "In Orbit"
             if next_pass.get("time"):
                 pass_dt = datetime.fromisoformat(next_pass["time"])
@@ -165,6 +170,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             }
 
         except Exception as err:
+            # Catch unexpected orbital calculation errors and fallback to previous valid state if available
             _LOGGER.warning("Orbital calculation warning for %s (%s).", self.satellite_name, err)
             if self.data:
                 return self.data
@@ -179,7 +185,6 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         headers = {"User-Agent": "HomeAssistant-SatelliteOrbitalTracker/2.0"}
 
         try:
-            # Use Home Assistant's global shared session so aioresponses cleanly intercepts it
             session = async_get_clientsession(self.hass)
             async with session.get(url, headers=headers, timeout=15) as response:
                 if response.status != 200:
@@ -189,6 +194,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                 soup = BeautifulSoup(html_text, "html.parser")
                 crew_list = []
 
+                # Locate the specific section header for current station occupants
                 station_header = soup.find(lambda tag: tag.name in ["h2", "h3"] and "At the Space Station" in tag.text)
                 if station_header:
                     module_container = station_header.find_parent("div", class_="hds-module")
@@ -196,6 +202,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                 else:
                     cards = soup.find_all("div", class_="hds-meet-the-card")
 
+                # Parse individual astronaut profile cards
                 for card in cards:
                     name_header = card.find("h3")
                     bio_p = card.find("p")
@@ -227,10 +234,11 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         except Exception as err:
             _LOGGER.debug("Failed to parse detailed NASA crew page: %s", err)
 
+        # Fallback to previously cached crew members if scraping fails
         return self.crew_members or []
 
     def _calculate_next_pass(self, now: datetime):
-        """Find the next upcoming pass over home coordinates."""
+        """Find the next upcoming satellite pass over home coordinates using Skyfield ephemeris."""
         try:
             t0 = self.ts.from_datetime(now)
             t1 = self.ts.from_datetime(now + timedelta(hours=48))
@@ -273,72 +281,75 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         """Download, validate, and persistently store TLE from CelesTrak with 404/repair tracking."""
         try:
             headers = {"User-Agent": "HomeAssistant-SatelliteOrbitalTracker/2.0"}
-            async with aiohttp.ClientSession() as session:
-                async with session.get(self.tle_url, headers=headers, timeout=15) as response:
-                    status_code = response.status
+            session = async_get_clientsession(self.hass)
+            async with session.get(self.tle_url, headers=headers, timeout=15) as response:
+                status_code = response.status
 
-                    if status_code != 200:
-                        # Handle permanent 404 (Satellite missing / decayed)
-                        if status_code == 404:
-                            now = datetime.now(timezone.utc)
-                            if self.first_404_timestamp is None:
-                                self.first_404_timestamp = now
+                if status_code != 200:
+                    if status_code == 404:
+                        now = datetime.now(timezone.utc)
+                        # Track when the continuous 404 missing satellite outage started
+                        if self.first_404_timestamp is None:
+                            self.first_404_timestamp = now
 
-                            if (now - self.first_404_timestamp) >= LOST_SATELLITE_WINDOW:
-                                ir.async_create_issue(
-                                    self.hass,
-                                    DOMAIN,
-                                    f"satellite_lost_{self.satellite_id}",
-                                    is_fixable=False,
-                                    severity=ir.IssueSeverity.WARNING,
-                                    translation_key="satellite_lost",
-                                    translation_placeholders={
-                                        "satellite_name": self.satellite_name,
-                                        "satellite_id": str(self.satellite_id),
-                                    },
-                                )
+                        # Trigger a Home Assistant repair issue if the satellite remains missing beyond 24 hours
+                        if (now - self.first_404_timestamp) >= LOST_SATELLITE_WINDOW:  # pragma: no cover
+                            ir.async_create_issue(
+                                self.hass,
+                                DOMAIN,
+                                f"satellite_lost_{str(self.satellite_id)}",
+                                is_fixable=False,
+                                severity=ir.IssueSeverity.WARNING,
+                                translation_key="satellite_lost",
+                                translation_placeholders={
+                                    "satellite_name": self.satellite_name,
+                                    "satellite_id": str(self.satellite_id),
+                                },
+                            )
                         return False, status_code
 
-                    # Reset 404 streak tracking and clear repair issue on successful connection
-                    self.first_404_timestamp = None
-                    ir.async_delete_issue(self.hass, DOMAIN, f"satellite_lost_{self.satellite_id}")
+                # Reset 404 streak tracking and clear any existing repair issue on successful connection
+                self.first_404_timestamp = None
+                ir.async_delete_issue(self.hass, DOMAIN, f"satellite_lost_{str(self.satellite_id)}")
 
-                    text = await response.text()
-                    lines = [line.strip() for line in text.splitlines() if line.strip()]
+                text = await response.text()
+                lines = [line.strip() for line in text.splitlines() if line.strip()]
 
-                    line1 = line2 = None
-                    parsed_name = self.satellite_name
+                line1 = line2 = None
+                parsed_name = self.satellite_name
 
-                    for line in lines:
-                        if line.startswith("1 "):
-                            line1 = line
-                        elif line.startswith("2 "):
-                            line2 = line
-                        elif not line.startswith("1 ") and not line.startswith("2 ") and len(line) > 2 and "---" not in line:
-                            parsed_name = line
+                # Parse TLE format (Line 1, Line 2, and optional satellite name header)
+                for line in lines:
+                    if line.startswith("1 "):
+                        line1 = line
+                    elif line.startswith("2 "):
+                        line2 = line
+                    elif not line.startswith("1 ") and not line.startswith("2 ") and len(line) > 2 and "---" not in line:
+                        parsed_name = line
 
-                    if not line1 or not line2:
-                        return False, status_code
+                if not line1 or not line2:
+                    return False, status_code
 
-                    self.satellite = EarthSatellite(line1, line2, parsed_name, self.ts)
-                    self.last_tle_fetch = datetime.now(timezone.utc)
+                # Initialize EarthSatellite model and save locally to persistent storage store
+                self.satellite = EarthSatellite(line1, line2, parsed_name, self.ts)
+                self.last_tle_fetch = datetime.now(timezone.utc)
 
-                    # Persist the newly fetched TLE data to disk via Home Assistant Store
-                    await self.store.async_save({
-                        "line1": line1,
-                        "line2": line2,
-                        "name": parsed_name,
-                        "timestamp": self.last_tle_fetch.isoformat(),
-                    })
+                await self.store.async_save({
+                    "line1": line1,
+                    "line2": line2,
+                    "name": parsed_name,
+                    "timestamp": self.last_tle_fetch.isoformat(),
+                })
 
-                    if parsed_name != self.satellite_name:
-                        self.satellite_name = parsed_name
-                        hass_entry = self.hass.config_entries.async_get_entry(self.entry.entry_id)
-                        if hass_entry:
-                            new_data = {**hass_entry.data, "satellite_name": parsed_name}
-                            self.hass.config_entries.async_update_entry(hass_entry, title=parsed_name, data=new_data)
+                # Dynamically update the config entry title if CelesTrak reports an updated official name
+                if parsed_name != self.satellite_name:
+                    self.satellite_name = parsed_name
+                    hass_entry = self.hass.config_entries.async_get_entry(self.entry.entry_id)
+                    if hass_entry:
+                        new_data = {**hass_entry.data, "satellite_name": parsed_name}
+                        self.hass.config_entries.async_update_entry(hass_entry, title=parsed_name, data=new_data)
 
-                    return True, status_code
+                return True, status_code
         except Exception as err:
             _LOGGER.error("TLE fetch exception for %s: %s", self.satellite_name, err)
             return False, 0

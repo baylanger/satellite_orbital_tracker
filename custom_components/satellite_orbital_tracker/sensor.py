@@ -21,9 +21,11 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up sensor entities from a config entry."""
+    """Set up sensor entities for the satellite tracker integration from a config entry."""
+    # Retrieve the shared data update coordinator instance for this entry from hass.data
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
+    # Instantiate the sensor suite for the tracked satellite
     sensors = [
         ISSStatusSensor(coordinator, entry),
         ISSAltitudeSensor(coordinator, entry),
@@ -32,16 +34,16 @@ async def async_setup_entry(
     async_add_entities(sensors)
 
 class ISSBaseSensor(CoordinatorEntity, SensorEntity):
-    """Base class for satellite sensors."""
+    """Base class for satellite tracker sensors providing common device info and entity naming."""
 
     def __init__(self, coordinator, entry: ConfigEntry):
-        """Initialize the sensor."""
+        """Initialize the base sensor entity."""
         super().__init__(coordinator)
         self.entry = entry
         self._attr_has_entity_name = True
         self._attr_icon = "mdi:satellite-variant"
 
-        # Prepending "Satellite " to the device name forces the slug to start with "satellite_"
+        # Configure device registry metadata so all platform sensors group cleanly under one device entry
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": f"Satellite {entry.title}",
@@ -50,9 +52,10 @@ class ISSBaseSensor(CoordinatorEntity, SensorEntity):
         }
 
 class ISSStatusSensor(ISSBaseSensor):
-    """Representation of the main mission status."""
+    """Representation of the main mission tracking status and telemetry attributes."""
 
     def __init__(self, coordinator, entry: ConfigEntry):
+        """Initialize the status sensor entity."""
         super().__init__(coordinator, entry)
         self._attr_name = "Status"
         self._attr_unique_id = f"{entry.entry_id}_status"
@@ -60,6 +63,7 @@ class ISSStatusSensor(ISSBaseSensor):
     @property
     @override
     def native_value(self):
+        """Return current status string from coordinator data or fallback during initialization."""
         if self.coordinator.data:
             return self.coordinator.data.get("status", "In Orbit")
         return "Initializing"
@@ -67,6 +71,7 @@ class ISSStatusSensor(ISSBaseSensor):
     @property
     @override
     def extra_state_attributes(self):
+        """Return rich orbital subpoint, pass details, and crew manifest as extra attributes."""
         data = self.coordinator.data
         if not data:
             return {}
@@ -74,13 +79,13 @@ class ISSStatusSensor(ISSBaseSensor):
         lat = data.get("latitude")
         lon = data.get("longitude")
 
-        # Clean up nan values for attributes
+        # Filter out NaN float values to keep state attributes clean and valid
         valid_lat = lat if lat is not None and not (isinstance(lat, float) and math.isnan(lat)) else None
         valid_lon = lon if lon is not None and not (isinstance(lon, float) and math.isnan(lon)) else None
 
         return {
-            "latitude": data.get("latitude"),
-            "longitude": data.get("longitude"),
+            "latitude": valid_lat,
+            "longitude": valid_lon,
             "next_pass_time": data.get("next_pass_time"),
             "next_pass_event": data.get("next_pass_event"),
             "crew_count": data.get("crew_count", 0),
@@ -89,9 +94,10 @@ class ISSStatusSensor(ISSBaseSensor):
         }
 
 class ISSAltitudeSensor(ISSBaseSensor):
-    """Representation of the physical orbital altitude."""
+    """Representation of the physical orbital altitude in kilometers."""
 
     def __init__(self, coordinator, entry: ConfigEntry):
+        """Initialize the altitude sensor entity."""
         super().__init__(coordinator, entry)
         self._attr_name = "Orbital Altitude"
         self._attr_unique_id = f"{entry.entry_id}_altitude"
@@ -101,6 +107,7 @@ class ISSAltitudeSensor(ISSBaseSensor):
     @property
     @override
     def native_value(self):
+        """Return validated numeric altitude value in kilometers, ignoring NaN states."""
         if self.coordinator.data:
             val = self.coordinator.data.get("altitude_km")
             if val is not None and not (isinstance(val, float) and math.isnan(val)):
@@ -108,9 +115,10 @@ class ISSAltitudeSensor(ISSBaseSensor):
         return None
 
 class ISSMaxPassDegreesSensor(ISSBaseSensor):
-    """Representation of the next pass peak sky elevation angle."""
+    """Representation of the next pass peak sky elevation angle in degrees."""
 
     def __init__(self, coordinator, entry: ConfigEntry):
+        """Initialize the maximum pass elevation angle sensor entity."""
         super().__init__(coordinator, entry)
         self._attr_name = "Next Pass Max Elevation"
         self._attr_unique_id = f"{entry.entry_id}_max_degrees"
@@ -120,6 +128,7 @@ class ISSMaxPassDegreesSensor(ISSBaseSensor):
     @property
     @override
     def native_value(self):
+        """Return validated peak elevation angle in degrees, ignoring NaN states."""
         if self.coordinator.data:
             val = self.coordinator.data.get("next_pass_max_degrees")
             if val is not None and not (isinstance(val, float) and math.isnan(val)):
