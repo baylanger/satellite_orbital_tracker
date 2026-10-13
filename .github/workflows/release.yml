@@ -21,9 +21,14 @@ jobs:
 
       - name: Create integration zip
         run: |
-          zip -r ../../satellite_orbital_tracker.zip .
+          zip -r satellite_orbital_tracker.zip .
 
-      - name: Upload release assets
+      - name: Upload release asset
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name || github.event.inputs.tag }}" ../../satellite_orbital_tracker.zip --clobber
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          if [ -z "$TAG" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          fi
+          gh release upload "$TAG" satellite_orbital_tracker.zip --clobber
