@@ -167,6 +167,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                 "next_pass_max_degrees": next_pass.get("max_alt"),
                 "crew_count": len(crew_data),
                 "crew_members": crew_data,
+                "time_to_pass": time_to_pass,
             }
 
         except Exception as err:
