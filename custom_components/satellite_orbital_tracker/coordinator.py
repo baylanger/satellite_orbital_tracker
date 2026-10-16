@@ -148,6 +148,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
 
             # Determine tracker status string based on upcoming pass proximity
             state_val = "In Orbit"
+            time_to_pass = None
             if next_pass.get("time"):
                 pass_dt = datetime.fromisoformat(next_pass["time"])
                 time_to_pass = (pass_dt - now).total_seconds()
