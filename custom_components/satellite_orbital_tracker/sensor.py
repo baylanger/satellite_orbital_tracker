@@ -9,7 +9,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import DEGREE, UnitOfLength
+from homeassistant.const import DEGREE, UnitOfLength, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -30,6 +30,9 @@ async def async_setup_entry(
         ISSStatusSensor(coordinator, entry),
         ISSAltitudeSensor(coordinator, entry),
         ISSMaxPassDegreesSensor(coordinator, entry),
+        ISSNextPass(coordinator, entry),
+        ISSNextPassSeconds(coordinator, entry),
+
     ]
     async_add_entities(sensors)
 
@@ -86,7 +89,7 @@ class ISSStatusSensor(ISSBaseSensor):
         return {
             "latitude": valid_lat,
             "longitude": valid_lon,
-            "next_pass_time": data.get("next_pass_time"),
+            # "next_pass_time": data.get("next_pass_time"),
             "next_pass_event": data.get("next_pass_event"),
             "crew_count": data.get("crew_count", 0),
             "crew_members": data.get("crew_members", []),
@@ -134,3 +137,40 @@ class ISSMaxPassDegreesSensor(ISSBaseSensor):
             if val is not None and not (isinstance(val, float) and math.isnan(val)):
                 return val
         return None
+
+class ISSNextPass(ISSBaseSensor):
+    """Representation of the next pass."""
+
+    def __init__(self, coordinator, entry: ConfigEntry):
+        super().__init__(coordinator, entry)
+        self._attr_name = "Next Pass"
+        self._attr_unique_id = f"{entry.entry_id}_next_pass_time"
+
+    @property
+    @override
+    def native_value(self):
+        if self.coordinator.data:
+           val = self.coordinator.data.get("next_pass_time")
+           return val[:val.rfind(".")] + "UTC+00:00"
+
+class ISSNextPassSeconds(ISSBaseSensor):
+    """Representation of the time till the next pass."""
+
+    def __init__(self, coordinator, entry: ConfigEntry):
+        super().__init__(coordinator, entry)
+        self._attr_name = "Seconds Till Next Pass"
+        self._attr_unique_id = f"{entry.entry_id}_time_to_pass"
+        self._attr_native_unit_of_measurement = UnitOfTime.SECONDS   
+        self._attr_state_class = SensorStateClass.MEASUREMENT 
+
+    @property
+    @override
+    def native_value(self):
+
+        if not self.coordinator.data:
+            return None
+        time_to_pass = self.coordinator.data.get("time_to_pass")
+
+        if time_to_pass is None:
+            return None
+        return round(time_to_pass)
