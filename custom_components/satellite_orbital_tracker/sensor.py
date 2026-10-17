@@ -151,7 +151,7 @@ class ISSNextPass(ISSBaseSensor):
     def native_value(self):
         if self.coordinator.data:
            val = self.coordinator.data.get("next_pass_time")
-           return val[:val.rfind(".")]
+           return val[:val.rfind(".")] + "UTC+00:00"
 
 class ISSNextPassSeconds(ISSBaseSensor):
     """Representation of the time till the next pass."""
