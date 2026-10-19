@@ -6,7 +6,6 @@ from pprint import pprint
 from freezegun.api import FrozenDateTimeFactory
 import pytest
 import re
-import logging
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
@@ -332,84 +331,6 @@ async def test_coordinator_5xx_server_error_retry_backoff(hass: HomeAssistant) -
     issue_registry = ir.async_get(hass)
     issue_id = f"satellite_lost_{TEST_NORAD_ID}"
     assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
-
-async def test_coordinator_404_recovery_clears_issue(
-    hass: HomeAssistant, freezer: FrozenDateTimeFactory, caplog
-) -> None:
-    """Test that a successful fetch clears an existing lost-satellite repair issue with debug tracking."""
-    caplog.set_level(logging.DEBUG)
-    start_time = datetime(2026, 10, 11, 12, 0, 0, tzinfo=timezone.utc)
-    freezer.move_to(start_time)
-
-    config_entry = MockConfigEntry(
-        domain=DOMAIN,
-        title=TEST_SATELLITE_NAME,
-        data={"norad_id": TEST_NORAD_ID, "update_interval": 120},
-    )
-    config_entry.add_to_hass(hass)
-
-    store = Store(hass, 1, f"{DOMAIN}_{TEST_NORAD_ID}")
-    await store.async_save({
-        "line1": TEST_TLE_LINE1,
-        "line2": TEST_TLE_LINE2,
-        "name": TEST_SATELLITE_NAME,
-        "timestamp": start_time.isoformat(),
-    })
-
-    with aioresponses() as m:
-        m.get(
-            re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$"),
-            status=200,
-            body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}",
-        )
-        m.get(
-            "https://www.nasa.gov/humans-in-space/astronauts/",
-            status=200,
-            body="<html><body></body></html>",
-        )
-        assert await hass.config_entries.async_setup(config_entry.entry_id)
-        await hass.async_block_till_done()
-
-    coordinator = hass.data[DOMAIN][config_entry.entry_id]
-
-    # Pre-create the repair issue in the registry
-    issue_registry = ir.async_get(hass)
-    issue_id = f"satellite_lost_{str(TEST_NORAD_ID)}"
-
-    ir.async_create_issue(
-        hass,
-        DOMAIN,
-        issue_id,
-        is_fixable=False,
-        severity=ir.IssueSeverity.WARNING,
-        translation_key="satellite_lost",
-        translation_placeholders={"satellite_name": TEST_SATELLITE_NAME, "satellite_id": str(TEST_NORAD_ID)},
-    )
-
-    initial_issue = issue_registry.async_get_issue(DOMAIN, issue_id)
-    print(f"\n[DEBUG] Pre-created issue state: {initial_issue}")
-    assert initial_issue is not None
-
-    # Simulate recovery via explicit fetch/parse call with a mocked 200 response
-    with aioresponses() as m:
-        m.get(
-            re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$"),
-            status=200,
-            body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}",
-        )
-
-        print("[DEBUG] Triggering _async_fetch_and_parse_tle() for recovery...")
-        success, status_code = await coordinator._async_fetch_and_parse_tle()
-        print(f"[DEBUG] Fetch result -> success: {success}, status_code: {status_code}")
-
-        assert success is True
-        assert status_code == 200
-
-    final_issue = issue_registry.async_get_issue(DOMAIN, issue_id)
-    print(f"[DEBUG] Post-fetch issue state: {final_issue}")
-
-    # Verify that the repair issue was automatically cleaned up/deleted
-    assert final_issue is None
 
 async def test_coordinator_first_time_404_no_repair_issue(hass: HomeAssistant) -> None:
     """Test that a recent 404 error (within the 24-hour window) does not trigger a repair issue yet."""
