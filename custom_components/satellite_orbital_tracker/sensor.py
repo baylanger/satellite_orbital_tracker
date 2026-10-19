@@ -94,6 +94,8 @@ class SatelliteStatusSensor(SatelliteBaseSensor):
             "next_pass_event": data.get("next_pass_event"),
             "crew_count": data.get("crew_count", 0),
             "crew_members": data.get("crew_members", []),
+            "tle_epoch": data.get("tle_epoch"),
+            "tle_last_fetched": data.get("tle_last_fetched"),
             "source": f"Local SGP4 Engine ({self.entry.title})",
         }
 

@@ -25,6 +25,7 @@ _LOGGER = logging.getLogger(__name__)
 TLE_FETCH_INTERVAL = timedelta(hours=12)       # Normal interval between successful fetches
 TLE_RETRY_INTERVAL = timedelta(hours=1)        # Shorter retry interval if the last fetch failed
 LOST_SATELLITE_WINDOW = timedelta(hours=24)    # Duration of continuous 404s before raising a repair issue
+MAX_CONSECUTIVE_CALC_FAILURES = 5              # Calculation errors in a row before entities go unavailable
 CREW_FETCH_INTERVAL = timedelta(hours=24)      # Only scrape NASA crew manifest once a day
 CREW_RETRY_INTERVAL = timedelta(hours=1)       # Retry interval after a failed or empty crew scrape
 NO_PASS_RECHECK_INTERVAL = timedelta(hours=1)  # How often to search again when no pass was found in the window
@@ -60,6 +61,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         self.satellite = None
         self.last_tle_fetch = None        # Timestamp of last SUCCESSFUL fetch
         self.last_tle_attempt = None      # Timestamp of last fetch ATTEMPT (success or fail)
+        self.calc_failures = 0            # Consecutive orbital calculation failures
         self.last_fetch_status = 200      # Track HTTP status code of the last attempt
         self.first_404_timestamp = None   # Tracks when a continuous 404 missing satellite streak started
         self.crew_members = []            # Cached list of current ISS crew members
@@ -171,7 +173,10 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             elif time_to_pass is not None and 0 <= time_to_pass <= 900:
                 state_val = f"Approaching ({next_pass.get('event', 'Pass')})"
 
+            self.calc_failures = 0
             return {
+                "tle_epoch": self.satellite.epoch.utc_datetime().isoformat(),
+                "tle_last_fetched": self.last_tle_fetch.isoformat() if self.last_tle_fetch else None,
                 "latitude": lat,
                 "longitude": lon,
                 "altitude_km": elevation,
@@ -188,8 +193,11 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         except Exception as err:
             # Catch unexpected orbital calculation errors and fallback to previous valid state if available
             _LOGGER.warning("Orbital calculation warning for %s (%s).", self.satellite_name, err)
-            if self.data:
+            self.calc_failures += 1
+            if self.data and self.calc_failures < MAX_CONSECUTIVE_CALC_FAILURES:
                 return self.data
+            # Do not keep serving an ever older position as if it were current: after repeated failures
+            # (or when there was never a valid result) let the entities become unavailable instead.
             raise UpdateFailed(f"Orbital calculation failed: {err}")
 
     async def _async_fetch_iss_crew_from_nasa(self) -> list[dict]:
