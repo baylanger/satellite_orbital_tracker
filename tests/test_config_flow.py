@@ -107,24 +107,29 @@ async def test_config_flow_options(hass: HomeAssistant) -> None:
             re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$"),
             status=200,
             body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}",
+            repeat=True,
         )
         await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
         # Setup now yields to the executor for the pass search, so check the final state after settling
         assert config_entry.state is ConfigEntryState.LOADED
 
-    # Initialize options flow for the config entry
-    result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] == FlowResultType.FORM
-    assert result["step_id"] == "init"
+        # Initialize options flow for the config entry
+        result = await hass.config_entries.options.async_init(config_entry.entry_id)
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "init"
 
-    # Configure new update interval option
-    result2 = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        user_input={"update_interval": 300},
-    )
-    assert result2["type"] == FlowResultType.CREATE_ENTRY
-    assert config_entry.options.get("update_interval") == 300
+        # Configure new update interval option
+        result2 = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={"update_interval": 300},
+        )
+        assert result2["type"] == FlowResultType.CREATE_ENTRY
+        assert config_entry.options.get("update_interval") == 300
+
+        # Saving the options schedules a reload of the entry; let it finish while CelesTrak is still mocked
+        # so no reload task or refresh timer is left running when the test ends.
+        await hass.async_block_till_done()
 
 async def test_config_flow_already_configured(hass: HomeAssistant) -> None:
     """Test config flow aborts if the satellite entry is already configured."""
