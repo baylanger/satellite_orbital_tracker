@@ -1,15 +1,17 @@
 """Sensor platform for Satellite Orbital Tracker."""
 from __future__ import annotations
 
+from datetime import datetime
 import math
 from typing import override
 
 from homeassistant.components.sensor import (
+    SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import DEGREE, UnitOfLength
+from homeassistant.const import DEGREE, UnitOfLength, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -27,13 +29,16 @@ async def async_setup_entry(
 
     # Instantiate the sensor suite for the tracked satellite
     sensors = [
-        ISSStatusSensor(coordinator, entry),
-        ISSAltitudeSensor(coordinator, entry),
-        ISSMaxPassDegreesSensor(coordinator, entry),
+        SatelliteStatusSensor(coordinator, entry),
+        SatelliteAltitudeSensor(coordinator, entry),
+        SatelliteMaxPassDegreesSensor(coordinator, entry),
+        SatelliteNextPassTimeSensor(coordinator, entry),
+        SatelliteNextPassRemainingSensor(coordinator, entry),
+
     ]
     async_add_entities(sensors)
 
-class ISSBaseSensor(CoordinatorEntity, SensorEntity):
+class SatelliteBaseSensor(CoordinatorEntity, SensorEntity):
     """Base class for satellite tracker sensors providing common device info and entity naming."""
 
     def __init__(self, coordinator, entry: ConfigEntry):
@@ -51,7 +56,7 @@ class ISSBaseSensor(CoordinatorEntity, SensorEntity):
             "model": f"NORAD ID: {entry.data['norad_id']}",
         }
 
-class ISSStatusSensor(ISSBaseSensor):
+class SatelliteStatusSensor(SatelliteBaseSensor):
     """Representation of the main mission tracking status and telemetry attributes."""
 
     def __init__(self, coordinator, entry: ConfigEntry):
@@ -86,14 +91,13 @@ class ISSStatusSensor(ISSBaseSensor):
         return {
             "latitude": valid_lat,
             "longitude": valid_lon,
-            "next_pass_time": data.get("next_pass_time"),
             "next_pass_event": data.get("next_pass_event"),
             "crew_count": data.get("crew_count", 0),
             "crew_members": data.get("crew_members", []),
             "source": f"Local SGP4 Engine ({self.entry.title})",
         }
 
-class ISSAltitudeSensor(ISSBaseSensor):
+class SatelliteAltitudeSensor(SatelliteBaseSensor):
     """Representation of the physical orbital altitude in kilometers."""
 
     def __init__(self, coordinator, entry: ConfigEntry):
@@ -114,7 +118,7 @@ class ISSAltitudeSensor(ISSBaseSensor):
                 return val
         return None
 
-class ISSMaxPassDegreesSensor(ISSBaseSensor):
+class SatelliteMaxPassDegreesSensor(SatelliteBaseSensor):
     """Representation of the next pass peak sky elevation angle in degrees."""
 
     def __init__(self, coordinator, entry: ConfigEntry):
@@ -134,3 +138,44 @@ class ISSMaxPassDegreesSensor(ISSBaseSensor):
             if val is not None and not (isinstance(val, float) and math.isnan(val)):
                 return val
         return None
+
+class SatelliteNextPassTimeSensor(SatelliteBaseSensor):
+    """Representation of the next pass time."""
+
+    def __init__(self, coordinator, entry: ConfigEntry):
+        super().__init__(coordinator, entry)
+        self._attr_name = "Next Pass Time"
+        self._attr_unique_id = f"{entry.entry_id}_next_pass_time"
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    @property
+    @override
+    def native_value(self):
+        """Return the next pass start as a timezone-aware datetime (UTC), or None if no pass is known."""
+        if self.coordinator.data:
+            val = self.coordinator.data.get("next_pass_time")
+            if val:
+                return datetime.fromisoformat(val)
+        return None
+
+class SatelliteNextPassRemainingSensor(SatelliteBaseSensor):
+    """Representation of the time remaining until the next pass."""
+
+    def __init__(self, coordinator, entry: ConfigEntry):
+        super().__init__(coordinator, entry)
+        self._attr_name = "Next Pass Time Remaining"
+        self._attr_unique_id = f"{entry.entry_id}_next_pass_time_remaining"
+        self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    @override
+    def native_value(self):
+
+        if not self.coordinator.data:
+            return None
+        time_to_pass = self.coordinator.data.get("next_pass_time_remaining")
+
+        if time_to_pass is None:
+            return None
+        return round(time_to_pass)

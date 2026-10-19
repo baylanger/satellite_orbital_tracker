@@ -148,6 +148,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
 
             # Determine tracker status string based on upcoming pass proximity
             state_val = "In Orbit"
+            time_to_pass = None
             if next_pass.get("time"):
                 pass_dt = datetime.fromisoformat(next_pass["time"])
                 time_to_pass = (pass_dt - now).total_seconds()
@@ -167,6 +168,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                 "next_pass_max_degrees": next_pass.get("max_alt"),
                 "crew_count": len(crew_data),
                 "crew_members": crew_data,
+                "next_pass_time_remaining": time_to_pass,
             }
 
         except Exception as err:
