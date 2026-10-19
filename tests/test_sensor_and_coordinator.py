@@ -8,6 +8,7 @@ import pytest
 import re
 import logging
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
@@ -625,8 +626,9 @@ async def test_coordinator_background_polling_interval(
             repeat=True,
         )
 
-        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
+        assert config_entry.state is ConfigEntryState.LOADED
 
         # Advance time past the 60-second update interval
         new_time = start_time + timedelta(seconds=70)
