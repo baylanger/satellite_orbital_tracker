@@ -5,6 +5,7 @@ from aioresponses import aioresponses
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from homeassistant import data_entry_flow, setup
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResultType
@@ -107,8 +108,10 @@ async def test_config_flow_options(hass: HomeAssistant) -> None:
             status=200,
             body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}",
         )
-        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
+        # Setup now yields to the executor for the pass search, so check the final state after settling
+        assert config_entry.state is ConfigEntryState.LOADED
 
     # Initialize options flow for the config entry
     result = await hass.config_entries.options.async_init(config_entry.entry_id)

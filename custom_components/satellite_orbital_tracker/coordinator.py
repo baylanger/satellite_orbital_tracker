@@ -26,6 +26,7 @@ TLE_FETCH_INTERVAL = timedelta(hours=12)      # Normal interval between successf
 TLE_RETRY_INTERVAL = timedelta(hours=1)       # Shorter retry interval if the last fetch failed
 LOST_SATELLITE_WINDOW = timedelta(hours=24)   # Duration of continuous 404s before raising a repair issue
 CREW_FETCH_INTERVAL = timedelta(hours=24)     # Only scrape NASA crew manifest once a day
+NO_PASS_RECHECK_INTERVAL = timedelta(hours=1)  # How often to search again when no pass was found in the window
 PASS_MIN_ELEVATION_DEGREES = 10.0             # Elevation above the horizon at which a pass counts as visible
 
 class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
@@ -62,6 +63,9 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         self.first_404_timestamp = None   # Tracks when a continuous 404 missing satellite streak started
         self.crew_members = []            # Cached list of current ISS crew members
         self.last_crew_fetch = None       # Timestamp of last successful crew scrape
+        self._next_pass_cache: dict | None = None   # Last next-pass search result
+        self._next_pass_cache_key = None            # Satellite object the cached result was computed for
+        self._next_pass_cache_time: datetime | None = None  # When the cached result was computed
 
         # Set up Home Assistant instance geographic coordinates as default observer for pass calculations
         self.home_observer = wgs84.latlon(
@@ -145,7 +149,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             lon = float(subpoint.longitude.degrees)
             elevation = float(subpoint.elevation.km)
 
-            next_pass = self._calculate_next_pass(now)
+            next_pass = await self._async_get_next_pass(now)
             current_altitude = self._calculate_current_altitude(t)
 
             # Determine tracker status string based on the current sky position and upcoming pass proximity
@@ -243,6 +247,27 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
 
         # Fallback to previously cached crew members if scraping fails
         return self.crew_members or []
+
+    async def _async_get_next_pass(self, now: datetime) -> dict:
+        """Return the next pass, only re-running the expensive 48h search when the cached result is outdated.
+
+        The search (Skyfield find_events over 48 hours) is CPU heavy, so it runs in the executor instead of
+        the event loop, and its result is reused until the cached event has passed, the TLE changed, or (when
+        no pass was found) an hour has elapsed.
+        """
+        cached = self._next_pass_cache
+        if cached is not None and self._next_pass_cache_key is self.satellite:
+            if cached.get("time"):
+                if datetime.fromisoformat(cached["time"]) > now:
+                    return cached
+            elif self._next_pass_cache_time and now - self._next_pass_cache_time < NO_PASS_RECHECK_INTERVAL:
+                return cached
+
+        result = await self.hass.async_add_executor_job(self._calculate_next_pass, now)
+        self._next_pass_cache = result
+        self._next_pass_cache_key = self.satellite
+        self._next_pass_cache_time = now
+        return result
 
     def _calculate_current_altitude(self, t) -> float | None:
         """Return the satellite's current elevation above the home observer's horizon, in degrees."""
