@@ -29,16 +29,16 @@ async def async_setup_entry(
 
     # Instantiate the sensor suite for the tracked satellite
     sensors = [
-        ISSStatusSensor(coordinator, entry),
-        ISSAltitudeSensor(coordinator, entry),
-        ISSMaxPassDegreesSensor(coordinator, entry),
-        ISSNextPassTimeSensor(coordinator, entry),
-        ISSNextPassRemainingSensor(coordinator, entry),
+        SatelliteStatusSensor(coordinator, entry),
+        SatelliteAltitudeSensor(coordinator, entry),
+        SatelliteMaxPassDegreesSensor(coordinator, entry),
+        SatelliteNextPassTimeSensor(coordinator, entry),
+        SatelliteNextPassRemainingSensor(coordinator, entry),
 
     ]
     async_add_entities(sensors)
 
-class ISSBaseSensor(CoordinatorEntity, SensorEntity):
+class SatelliteBaseSensor(CoordinatorEntity, SensorEntity):
     """Base class for satellite tracker sensors providing common device info and entity naming."""
 
     def __init__(self, coordinator, entry: ConfigEntry):
@@ -56,7 +56,7 @@ class ISSBaseSensor(CoordinatorEntity, SensorEntity):
             "model": f"NORAD ID: {entry.data['norad_id']}",
         }
 
-class ISSStatusSensor(ISSBaseSensor):
+class SatelliteStatusSensor(SatelliteBaseSensor):
     """Representation of the main mission tracking status and telemetry attributes."""
 
     def __init__(self, coordinator, entry: ConfigEntry):
@@ -97,7 +97,7 @@ class ISSStatusSensor(ISSBaseSensor):
             "source": f"Local SGP4 Engine ({self.entry.title})",
         }
 
-class ISSAltitudeSensor(ISSBaseSensor):
+class SatelliteAltitudeSensor(SatelliteBaseSensor):
     """Representation of the physical orbital altitude in kilometers."""
 
     def __init__(self, coordinator, entry: ConfigEntry):
@@ -118,7 +118,7 @@ class ISSAltitudeSensor(ISSBaseSensor):
                 return val
         return None
 
-class ISSMaxPassDegreesSensor(ISSBaseSensor):
+class SatelliteMaxPassDegreesSensor(SatelliteBaseSensor):
     """Representation of the next pass peak sky elevation angle in degrees."""
 
     def __init__(self, coordinator, entry: ConfigEntry):
@@ -139,7 +139,7 @@ class ISSMaxPassDegreesSensor(ISSBaseSensor):
                 return val
         return None
 
-class ISSNextPassTimeSensor(ISSBaseSensor):
+class SatelliteNextPassTimeSensor(SatelliteBaseSensor):
     """Representation of the next pass time."""
 
     def __init__(self, coordinator, entry: ConfigEntry):
@@ -158,7 +158,7 @@ class ISSNextPassTimeSensor(ISSBaseSensor):
                 return datetime.fromisoformat(val)
         return None
 
-class ISSNextPassRemainingSensor(ISSBaseSensor):
+class SatelliteNextPassRemainingSensor(SatelliteBaseSensor):
     """Representation of the time remaining until the next pass."""
 
     def __init__(self, coordinator, entry: ConfigEntry):

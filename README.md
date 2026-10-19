@@ -100,9 +100,9 @@ State: Current operational tracking state (`In Orbit`, `Approaching (...)`, `Ove
 Attributes:
   - `latitude`, `longitude` : Live coordinates
   - `next_pass_event` : The phase of the pass (Rise (Above 10°), Culmination (Highest Point), or Set
-    - Rise (Above 10°): The ISS crosses above your 10° horizon threshold. It enters your visible sky.
-    - Culmination (Highest Point): The ISS reaches its peak elevation angle in the sky directly above (or closest to) your home coordinates.
-    - Set: The ISS dips back below the 10° threshold, ending the visible pass.
+    - Rise (Above 10°): The satellite crosses above your 10° horizon threshold. It enters your visible sky.
+    - Culmination (Highest Point): The satellite reaches its peak elevation angle in the sky directly above (or closest to) your home coordinates.
+    - Set: The satellite dips back below the 10° threshold, ending the visible pass.
   - `source` : Tracking engine identifier (Local SGP4 Engine)
 
 2. Orbital Altitude Sensor
