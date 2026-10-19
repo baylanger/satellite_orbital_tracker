@@ -32,14 +32,15 @@ Contributions, bug reports, and suggestions are always welcome! If you have an i
 - **Configurable Polling Interval**: Fine-tune your update frequency between 5 and 3600 seconds directly during setup or through the options flow.
 - **Multi-Language Support**: Fully localized with built-in translation dictionaries for English (`en`), French (`fr`), German (`de`), Español (`es`)
 - **Map Optimized**: Exposes standard latitude, longitude, and elevation attributes natively compatible with Home Assistant's Map Card.
-- **ISS Crew Members**: When tracking the ISS, the list of current in-space astronauts is extracted, every 24hrs, from [NASA Human In Space](https://www.nasa.gov/humans-in-space/astronauts/) and added to the sensor.
+- **ISS Crew Members**: When tracking the ISS, the list of current in-space astronauts is extracted, every 24hrs, from [NASA Human In Space](https://www.nasa.gov/humans-in-space/astronauts/) and added to the sensor. If NASA can't be reached or the page returns no crew, the previous list is kept and the integration retries every hour.
 
 ### Robust Error Handling & Repair Notifications
 
 The integration includes built-in resilience for tracking satellite data from CelesTrak:
-- **Transient Error Backoff:** If CelesTrak returns temporary server errors (5xx), the coordinator backs off and retries on an accelerated 1-hour schedule rather than waiting for the standard 12-hour sync window.
-- **Lost Satellite Detection (24-Hour Grace Period):** If CelesTrak returns a continuous `404 Not Found` for over 24 hours (indicating a decayed or decommissioned satellite), Home Assistant will automatically trigger a **Repair Issue** notification.
+- **Transient Error Backoff:** If CelesTrak returns temporary server errors (5xx), rate limits you (403) or any other non-200 response, the coordinator backs off and retries on an accelerated 1-hour schedule rather than waiting for the standard 12-hour sync window. These responses are never treated as a missing satellite.
+- **Lost Satellite Detection (24-Hour Grace Period):** If CelesTrak returns a continuous `404 Not Found`, or an HTTP 200 without any TLE data, for over 24 hours (indicating a decayed or decommissioned satellite), Home Assistant will automatically trigger a **Repair Issue** notification.
 - **Automatic Recovery:** If the satellite shows back up in the CelesTrak database and returns a valid TLE (HTTP 200) after a 404 repair was raised, the integration automatically clears the repair issue and resets its internal tracking.
+- **No Frozen Positions:** If the orbital calculation fails 5 times in a row, the sensors become unavailable instead of continuing to show the last known position.
 
 ---
 
@@ -96,13 +97,18 @@ Each satellite instance creates a dedicated device with five namespaced entities
 
 1. Status Sensor
 Entity ID Pattern: `sensor.[satellite_name]_status` (e.g., sensor.iss_zarya_status)
-State: Current operational tracking state (`In Orbit`, `Approaching (...)`, `Overhead Now!`).
+State: Current operational tracking state:
+  - `Overhead Now!`: The satellite is currently above 10° elevation from your home coordinates (from its rise until its set).
+  - `Approaching (...)`: The next pass event (rise) happens within 15 minutes.
+  - `In Orbit`: Any other time.
 Attributes:
   - `latitude`, `longitude` : Live coordinates
   - `next_pass_event` : The phase of the pass (Rise (Above 10°), Culmination (Highest Point), or Set
     - Rise (Above 10°): The satellite crosses above your 10° horizon threshold. It enters your visible sky.
     - Culmination (Highest Point): The satellite reaches its peak elevation angle in the sky directly above (or closest to) your home coordinates.
     - Set: The satellite dips back below the 10° threshold, ending the visible pass.
+  - `tle_epoch` : ISO8601 timestamp of the orbital elements (TLE) currently used for the calculations
+  - `tle_last_fetched` : ISO8601 timestamp of when those orbital elements were last downloaded from CelesTrak
   - `source` : Tracking engine identifier (Local SGP4 Engine)
 
 2. Orbital Altitude Sensor
