@@ -1,10 +1,12 @@
 """Sensor platform for Satellite Orbital Tracker."""
 from __future__ import annotations
 
+from datetime import datetime
 import math
 from typing import override
 
 from homeassistant.components.sensor import (
+    SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
 )
@@ -89,7 +91,6 @@ class ISSStatusSensor(ISSBaseSensor):
         return {
             "latitude": valid_lat,
             "longitude": valid_lon,
-            # "next_pass_time": data.get("next_pass_time"),
             "next_pass_event": data.get("next_pass_event"),
             "crew_count": data.get("crew_count", 0),
             "crew_members": data.get("crew_members", []),
@@ -145,13 +146,17 @@ class ISSNextPassTimeSensor(ISSBaseSensor):
         super().__init__(coordinator, entry)
         self._attr_name = "Next Pass Time"
         self._attr_unique_id = f"{entry.entry_id}_next_pass_time"
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
     @property
     @override
     def native_value(self):
+        """Return the next pass start as a timezone-aware datetime (UTC), or None if no pass is known."""
         if self.coordinator.data:
-           val = self.coordinator.data.get("next_pass_time")
-           return val[:val.rfind(".")] + "UTC+00:00"
+            val = self.coordinator.data.get("next_pass_time")
+            if val:
+                return datetime.fromisoformat(val)
+        return None
 
 class ISSNextPassRemainingSensor(ISSBaseSensor):
     """Representation of the time remaining until the next pass."""
@@ -160,8 +165,8 @@ class ISSNextPassRemainingSensor(ISSBaseSensor):
         super().__init__(coordinator, entry)
         self._attr_name = "Next Pass Time Remaining"
         self._attr_unique_id = f"{entry.entry_id}_next_pass_time_remaining"
-        self._attr_native_unit_of_measurement = UnitOfTime.SECONDS   
-        self._attr_state_class = SensorStateClass.MEASUREMENT 
+        self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
+        self._attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
     @override
