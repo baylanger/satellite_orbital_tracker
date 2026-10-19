@@ -22,12 +22,13 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 # TLE polling, retry intervals, and crew fetch frequency constants
-TLE_FETCH_INTERVAL = timedelta(hours=12)      # Normal interval between successful fetches
-TLE_RETRY_INTERVAL = timedelta(hours=1)       # Shorter retry interval if the last fetch failed
-LOST_SATELLITE_WINDOW = timedelta(hours=24)   # Duration of continuous 404s before raising a repair issue
-CREW_FETCH_INTERVAL = timedelta(hours=24)     # Only scrape NASA crew manifest once a day
+TLE_FETCH_INTERVAL = timedelta(hours=12)       # Normal interval between successful fetches
+TLE_RETRY_INTERVAL = timedelta(hours=1)        # Shorter retry interval if the last fetch failed
+LOST_SATELLITE_WINDOW = timedelta(hours=24)    # Duration of continuous 404s before raising a repair issue
+CREW_FETCH_INTERVAL = timedelta(hours=24)      # Only scrape NASA crew manifest once a day
+CREW_RETRY_INTERVAL = timedelta(hours=1)       # Retry interval after a failed or empty crew scrape
 NO_PASS_RECHECK_INTERVAL = timedelta(hours=1)  # How often to search again when no pass was found in the window
-PASS_MIN_ELEVATION_DEGREES = 10.0             # Elevation above the horizon at which a pass counts as visible
+PASS_MIN_ELEVATION_DEGREES = 10.0              # Elevation above the horizon at which a pass counts as visible
 
 class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
     """Data update coordinator for tracking a specific satellite."""
@@ -63,6 +64,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         self.first_404_timestamp = None   # Tracks when a continuous 404 missing satellite streak started
         self.crew_members = []            # Cached list of current ISS crew members
         self.last_crew_fetch = None       # Timestamp of last successful crew scrape
+        self.last_crew_attempt = None     # Timestamp of last crew scrape ATTEMPT (success or fail)
         self._next_pass_cache: dict | None = None   # Last next-pass search result
         self._next_pass_cache_key = None            # Satellite object the cached result was computed for
         self._next_pass_cache_time: datetime | None = None  # When the cached result was computed
@@ -130,11 +132,14 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                         raise UpdateFailed(f"Failed to download TLE data and no cache exists for {self.satellite_name}.")
 
             # 3. Fetch structured ISS crew manifest once a day if tracking the International Space Station (NORAD ID 25544)
+            #    A failed or empty scrape is retried hourly (not on every poll) and keeps the cached crew.
             crew_data = self.crew_members
             if str(self.satellite_id) == "25544":
-                time_since_crew_fetch = (now - self.last_crew_fetch) if self.last_crew_fetch else None
-                if not self.crew_members or not time_since_crew_fetch or time_since_crew_fetch >= CREW_FETCH_INTERVAL:
-                    scraped_crew = await self._async_fetch_iss_crew_from_nasa()
+                last_attempt_ok = self.last_crew_fetch is not None and self.last_crew_fetch == self.last_crew_attempt
+                crew_interval = CREW_FETCH_INTERVAL if last_attempt_ok else CREW_RETRY_INTERVAL
+                if self.last_crew_attempt is None or (now - self.last_crew_attempt) >= crew_interval:
+                    self.last_crew_attempt = now
+                    scraped_crew = await self._async_scrape_iss_crew()
                     if scraped_crew:
                         self.crew_members = scraped_crew
                         self.last_crew_fetch = now
@@ -188,7 +193,11 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Orbital calculation failed: {err}")
 
     async def _async_fetch_iss_crew_from_nasa(self) -> list[dict]:
-        """Scrape structured ISS crew members from NASA's astronaut page under 'At the Space Station'."""
+        """Scrape the ISS crew from NASA, falling back to the previously cached crew members on failure."""
+        return await self._async_scrape_iss_crew() or self.crew_members or []
+
+    async def _async_scrape_iss_crew(self) -> list[dict]:
+        """Download NASA's astronaut page and parse the crew; returns an empty list on any failure."""
         if str(self.satellite_id) != "25544":
             return []
 
@@ -199,54 +208,57 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             session = async_get_clientsession(self.hass)
             async with session.get(url, headers=headers, timeout=15) as response:
                 if response.status != 200:
-                    return self.crew_members or []
-
+                    return []
                 html_text = await response.text()
-                soup = BeautifulSoup(html_text, "html.parser")
-                crew_list = []
 
-                # Locate the specific section header for current station occupants
-                station_header = soup.find(lambda tag: tag.name in ["h2", "h3"] and "At the Space Station" in tag.text)
-                if station_header:
-                    module_container = station_header.find_parent("div", class_="hds-module")
-                    cards = module_container.find_all("div", class_="hds-meet-the-card") if module_container else soup.find_all("div", class_="hds-meet-the-card")
-                else:
-                    cards = soup.find_all("div", class_="hds-meet-the-card")
-
-                # Parse individual astronaut profile cards
-                for card in cards:
-                    name_header = card.find("h3")
-                    bio_p = card.find("p")
-
-                    if name_header:
-                        name = name_header.get_text(strip=True)
-                        bio_text = bio_p.get_text(strip=True) if bio_p else ""
-
-                        agency = "Unknown"
-                        if "Roscosmos" in bio_text or "cosmonaut" in bio_text.lower():
-                            agency = "Roscosmos"
-                        elif "CSA" in bio_text or "Canadian" in bio_text:
-                            agency = "CSA"
-                        elif "NASA" in bio_text:
-                            agency = "NASA"
-
-                        exp_match = re.search(r"Expedition\s+[\d/]+", bio_text, re.IGNORECASE)
-                        expedition = exp_match.group(0) if exp_match else None
-
-                        crew_list.append({
-                            "name": name,
-                            "agency": agency,
-                            "title": bio_text,
-                            "expedition": expedition
-                        })
-
-                if crew_list:
-                    return crew_list
+            # BeautifulSoup parsing CPU bound, keep it off the event loop
+            return await self.hass.async_add_executor_job(self._parse_crew_html, html_text)
         except Exception as err:
             _LOGGER.debug("Failed to parse detailed NASA crew page: %s", err)
+            return []
 
-        # Fallback to previously cached crew members if scraping fails
-        return self.crew_members or []
+    @staticmethod
+    def _parse_crew_html(html_text: str) -> list[dict]:
+        """Parse the structured crew list from NASA's astronaut page under 'At the Space Station'."""
+        soup = BeautifulSoup(html_text, "html.parser")
+        crew_list = []
+
+        # Locate the specific section header for current station occupants
+        station_header = soup.find(lambda tag: tag.name in ["h2", "h3"] and "At the Space Station" in tag.text)
+        if station_header:
+            module_container = station_header.find_parent("div", class_="hds-module")
+            cards = module_container.find_all("div", class_="hds-meet-the-card") if module_container else soup.find_all("div", class_="hds-meet-the-card")
+        else:
+            cards = soup.find_all("div", class_="hds-meet-the-card")
+
+        # Parse individual astronaut profile cards
+        for card in cards:
+            name_header = card.find("h3")
+            bio_p = card.find("p")
+
+            if name_header:
+                name = name_header.get_text(strip=True)
+                bio_text = bio_p.get_text(strip=True) if bio_p else ""
+
+                agency = "Unknown"
+                if "Roscosmos" in bio_text or "cosmonaut" in bio_text.lower():
+                    agency = "Roscosmos"
+                elif "CSA" in bio_text or "Canadian" in bio_text:
+                    agency = "CSA"
+                elif "NASA" in bio_text:
+                    agency = "NASA"
+
+                exp_match = re.search(r"Expedition\s+[\d/]+", bio_text, re.IGNORECASE)
+                expedition = exp_match.group(0) if exp_match else None
+
+                crew_list.append({
+                    "name": name,
+                    "agency": agency,
+                    "title": bio_text,
+                    "expedition": expedition
+                })
+
+        return crew_list
 
     async def _async_get_next_pass(self, now: datetime) -> dict:
         """Return the next pass, only re-running the expensive 48h search when the cached result is outdated.
