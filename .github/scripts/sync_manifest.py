@@ -28,7 +28,7 @@ def main():
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
         f.write("\n")
-    
+
     print(f"Successfully updated manifest requirements to: {requirements}")
 
 if __name__ == "__main__":
