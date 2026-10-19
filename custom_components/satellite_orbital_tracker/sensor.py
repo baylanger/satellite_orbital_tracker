@@ -30,8 +30,8 @@ async def async_setup_entry(
         ISSStatusSensor(coordinator, entry),
         ISSAltitudeSensor(coordinator, entry),
         ISSMaxPassDegreesSensor(coordinator, entry),
-        ISSNextPass(coordinator, entry),
-        ISSNextPassSeconds(coordinator, entry),
+        ISSNextPassTimeSensor(coordinator, entry),
+        ISSNextPassRemainingSensor(coordinator, entry),
 
     ]
     async_add_entities(sensors)
@@ -138,12 +138,12 @@ class ISSMaxPassDegreesSensor(ISSBaseSensor):
                 return val
         return None
 
-class ISSNextPass(ISSBaseSensor):
-    """Representation of the next pass."""
+class ISSNextPassTimeSensor(ISSBaseSensor):
+    """Representation of the next pass time."""
 
     def __init__(self, coordinator, entry: ConfigEntry):
         super().__init__(coordinator, entry)
-        self._attr_name = "Next Pass"
+        self._attr_name = "Next Pass Time"
         self._attr_unique_id = f"{entry.entry_id}_next_pass_time"
 
     @property
@@ -153,13 +153,13 @@ class ISSNextPass(ISSBaseSensor):
            val = self.coordinator.data.get("next_pass_time")
            return val[:val.rfind(".")] + "UTC+00:00"
 
-class ISSNextPassSeconds(ISSBaseSensor):
-    """Representation of the time till the next pass."""
+class ISSNextPassRemainingSensor(ISSBaseSensor):
+    """Representation of the time remaining until the next pass."""
 
     def __init__(self, coordinator, entry: ConfigEntry):
         super().__init__(coordinator, entry)
-        self._attr_name = "Seconds Till Next Pass"
-        self._attr_unique_id = f"{entry.entry_id}_time_to_pass"
+        self._attr_name = "Next Pass Time Remaining"
+        self._attr_unique_id = f"{entry.entry_id}_next_pass_time_remaining"
         self._attr_native_unit_of_measurement = UnitOfTime.SECONDS   
         self._attr_state_class = SensorStateClass.MEASUREMENT 
 
@@ -169,7 +169,7 @@ class ISSNextPassSeconds(ISSBaseSensor):
 
         if not self.coordinator.data:
             return None
-        time_to_pass = self.coordinator.data.get("time_to_pass")
+        time_to_pass = self.coordinator.data.get("next_pass_time_remaining")
 
         if time_to_pass is None:
             return None
