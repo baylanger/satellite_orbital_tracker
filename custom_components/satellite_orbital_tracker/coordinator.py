@@ -26,6 +26,7 @@ TLE_FETCH_INTERVAL = timedelta(hours=12)      # Normal interval between successf
 TLE_RETRY_INTERVAL = timedelta(hours=1)       # Shorter retry interval if the last fetch failed
 LOST_SATELLITE_WINDOW = timedelta(hours=24)   # Duration of continuous 404s before raising a repair issue
 CREW_FETCH_INTERVAL = timedelta(hours=24)     # Only scrape NASA crew manifest once a day
+PASS_MIN_ELEVATION_DEGREES = 10.0             # Elevation above the horizon at which a pass counts as visible
 
 class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
     """Data update coordinator for tracking a specific satellite."""
@@ -145,17 +146,21 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             elevation = float(subpoint.elevation.km)
 
             next_pass = self._calculate_next_pass(now)
+            current_altitude = self._calculate_current_altitude(t)
 
-            # Determine tracker status string based on upcoming pass proximity
+            # Determine tracker status string based on the current sky position and upcoming pass proximity
             state_val = "In Orbit"
             time_to_pass = None
             if next_pass.get("time"):
                 pass_dt = datetime.fromisoformat(next_pass["time"])
                 time_to_pass = (pass_dt - now).total_seconds()
-                if 0 <= time_to_pass <= 900:
-                    state_val = f"Approaching ({next_pass.get('event', 'Pass')})"
-                elif -300 <= time_to_pass < 0:
-                    state_val = "Overhead Now!"
+
+            if current_altitude is not None and current_altitude >= PASS_MIN_ELEVATION_DEGREES:
+                # _calculate_next_pass() only returns events that are still in the future, so a pass in
+                # progress can only be detected from the satellite's current elevation over the home location.
+                state_val = "Overhead Now!"
+            elif time_to_pass is not None and 0 <= time_to_pass <= 900:
+                state_val = f"Approaching ({next_pass.get('event', 'Pass')})"
 
             return {
                 "latitude": lat,
@@ -239,13 +244,25 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         # Fallback to previously cached crew members if scraping fails
         return self.crew_members or []
 
+    def _calculate_current_altitude(self, t) -> float | None:
+        """Return the satellite's current elevation above the home observer's horizon, in degrees."""
+        try:
+            topocentric = (self.satellite - self.home_observer).at(t)
+            alt, _, _ = topocentric.altaz()
+            return float(alt.degrees)
+        except Exception as err:
+            _LOGGER.debug("Could not compute current elevation: %s", err)
+            return None
+
     def _calculate_next_pass(self, now: datetime):
         """Find the next upcoming satellite pass over home coordinates using Skyfield ephemeris."""
         try:
             t0 = self.ts.from_datetime(now)
             t1 = self.ts.from_datetime(now + timedelta(hours=48))
 
-            times, events = self.satellite.find_events(self.home_observer, t0, t1, altitude_degrees=10.0)
+            times, events = self.satellite.find_events(
+                self.home_observer, t0, t1, altitude_degrees=PASS_MIN_ELEVATION_DEGREES
+            )
             event_names = ["Rise (Above 10°)", "Culmination (Highest Point)", "Set"]
 
             for i, (ti, event) in enumerate(zip(times, events)):
