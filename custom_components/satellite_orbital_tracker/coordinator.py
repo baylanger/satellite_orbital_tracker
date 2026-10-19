@@ -327,6 +327,12 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                             )
                         return False, status_code
 
+                    # Any other non-200 status (403 rate limiting, 5xx outage, ...) is simply a failed fetch.
+                    # Return here so it neither resets the 404 streak nor clears an existing repair issue,
+                    # and so the response body is never parsed as if it were TLE data.
+                    _LOGGER.debug("CelesTrak returned HTTP %s for %s", status_code, self.satellite_name)
+                    return False, status_code
+
                 # Reset 404 streak tracking and clear any existing repair issue on successful connection
                 self.first_404_timestamp = None
                 ir.async_delete_issue(self.hass, DOMAIN, f"satellite_lost_{str(self.satellite_id)}")
