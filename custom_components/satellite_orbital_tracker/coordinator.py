@@ -296,6 +296,28 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
 
         return {"time": None, "event": "Unknown", "max_alt": None}
 
+    def _record_satellite_missing(self) -> None:
+        """Track a continuous "satellite not found" streak and raise a repair issue once it exceeds 24 hours."""
+        now = datetime.now(timezone.utc)
+        # Track when the continuous 404 missing satellite outage started
+        if self.first_404_timestamp is None:
+            self.first_404_timestamp = now
+
+        # Trigger a Home Assistant repair issue if the satellite remains missing beyond 24 hours
+        if (now - self.first_404_timestamp) >= LOST_SATELLITE_WINDOW:  # pragma: no cover
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                f"satellite_lost_{str(self.satellite_id)}",
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="satellite_lost",
+                translation_placeholders={
+                    "satellite_name": self.satellite_name,
+                    "satellite_id": str(self.satellite_id),
+                },
+            )
+
     async def _async_fetch_and_parse_tle(self) -> tuple[bool, int]:
         """Download, validate, and persistently store TLE from CelesTrak with 404/repair tracking."""
         try:
@@ -306,25 +328,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
 
                 if status_code != 200:
                     if status_code == 404:
-                        now = datetime.now(timezone.utc)
-                        # Track when the continuous 404 missing satellite outage started
-                        if self.first_404_timestamp is None:
-                            self.first_404_timestamp = now
-
-                        # Trigger a Home Assistant repair issue if the satellite remains missing beyond 24 hours
-                        if (now - self.first_404_timestamp) >= LOST_SATELLITE_WINDOW:  # pragma: no cover
-                            ir.async_create_issue(
-                                self.hass,
-                                DOMAIN,
-                                f"satellite_lost_{str(self.satellite_id)}",
-                                is_fixable=False,
-                                severity=ir.IssueSeverity.WARNING,
-                                translation_key="satellite_lost",
-                                translation_placeholders={
-                                    "satellite_name": self.satellite_name,
-                                    "satellite_id": str(self.satellite_id),
-                                },
-                            )
+                        self._record_satellite_missing()
                         return False, status_code
 
                     # Any other non-200 status (403 rate limiting, 5xx outage, ...) is simply a failed fetch.
@@ -332,10 +336,6 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                     # and so the response body is never parsed as if it were TLE data.
                     _LOGGER.debug("CelesTrak returned HTTP %s for %s", status_code, self.satellite_name)
                     return False, status_code
-
-                # Reset 404 streak tracking and clear any existing repair issue on successful connection
-                self.first_404_timestamp = None
-                ir.async_delete_issue(self.hass, DOMAIN, f"satellite_lost_{str(self.satellite_id)}")
 
                 text = await response.text()
                 lines = [line.strip() for line in text.splitlines() if line.strip()]
@@ -352,8 +352,20 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                     elif not line.startswith("1 ") and not line.startswith("2 ") and len(line) > 2 and "---" not in line:
                         parsed_name = line
 
+                if not line1 and not line2:
+                    # HTTP 200 without any TLE lines (for example a "no data found" message for an unknown or
+                    # decayed catalog number). Count it like a 404 so a satellite that stays missing for 24 hours
+                    # raises the repair issue, and report it as a 404 so the caller uses the shorter retry interval.
+                    _LOGGER.debug("CelesTrak returned HTTP 200 without TLE data for %s", self.satellite_name)
+                    self._record_satellite_missing()
+                    return False, 404
+
                 if not line1 or not line2:
                     return False, status_code
+
+                # A valid TLE was received: reset the missing-satellite streak and clear any existing repair issue
+                self.first_404_timestamp = None
+                ir.async_delete_issue(self.hass, DOMAIN, f"satellite_lost_{str(self.satellite_id)}")
 
                 # Initialize EarthSatellite model and save locally to persistent storage store
                 self.satellite = EarthSatellite(line1, line2, parsed_name, self.ts)
