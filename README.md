@@ -1,3 +1,7 @@
+<p align="left">
+  <img src="https://raw.githubusercontent.com/baylanger/satellite_orbital_tracker/main/custom_components/satellite_orbital_tracker/brand/logo.png" alt="Satellite Orbital Tracker" width="200">
+</p>
+
 # Satellite Orbital Tracker Integration for Home Assistant
 
 [![HACS Default](https://img.shields.io/badge/HACS-Default-orange.svg?style=for-the-badge)](https://my.home-assistant.io/redirect/hacs_repository/?owner=baylanger&repository=satellite_orbital_tracker)
