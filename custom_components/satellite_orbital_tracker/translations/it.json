@@ -1,0 +1,48 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Satellite Orbital Tracker",
+        "description": "Inserisci l'ID NORAD e l'intervallo di aggiornamento per il satellite.",
+        "data": {
+          "norad_id": "ID NORAD del satellite",
+          "update_interval": "Intervallo di aggiornamento (secondi)"
+        },
+        "data_description": {
+          "update_interval": "Inserisci un numero intero compreso tra 5 e 3600."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossibile connettersi a CelesTrak, riprova più tardi",
+      "invalid_norad_id": "L'ID NORAD inserito non esiste",
+      "invalid_interval": "L'intervallo di aggiornamento deve essere compreso tra 5 e 3600 secondi.",
+      "integer_required": "L'intervallo di aggiornamento deve essere un numero intero (senza decimali)."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configura il tracciamento del satellite",
+        "data": {
+          "update_interval": "Intervallo di aggiornamento (secondi)"
+        },
+        "data_description": {
+          "update_interval": "Inserisci un numero intero compreso tra 5 e 3600."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossibile connettersi a CelesTrak, riprova più tardi",
+      "invalid_norad_id": "L'ID NORAD inserito non esiste",
+      "invalid_interval": "L'intervallo di aggiornamento deve essere compreso tra 5 e 3600 secondi.",
+      "integer_required": "L'intervallo di aggiornamento deve essere un numero intero (senza decimali)."
+    }
+  },
+  "issues": {
+    "satellite_lost": {
+      "title": "Satellite {satellite_name} ({satellite_id}) mancante",
+      "description": "CelesTrak restituisce ininterrottamente l'errore 404 Not Found per l'ID NORAD {satellite_id} da oltre 24 ore. Il satellite potrebbe essere rientrato nell'atmosfera o essere stato dismesso."
+    }
+  }
+}

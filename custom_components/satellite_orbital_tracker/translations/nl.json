@@ -1,0 +1,48 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Satellite Orbital Tracker",
+        "description": "Voer de NORAD-ID en het ophaalinterval voor de satelliet in.",
+        "data": {
+          "norad_id": "NORAD-satelliet-ID",
+          "update_interval": "Updateinterval (seconden)"
+        },
+        "data_description": {
+          "update_interval": "Voer een geheel getal tussen 5 en 3600 in."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbinding met CelesTrak mislukt, probeer het later opnieuw",
+      "invalid_norad_id": "De ingevoerde NORAD-ID bestaat niet",
+      "invalid_interval": "Het updateinterval moet tussen 5 en 3600 seconden liggen.",
+      "integer_required": "Het updateinterval moet een geheel getal zijn (geen decimalen)."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Satellietvolging configureren",
+        "data": {
+          "update_interval": "Updateinterval (seconden)"
+        },
+        "data_description": {
+          "update_interval": "Voer een geheel getal tussen 5 en 3600 in."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbinding met CelesTrak mislukt, probeer het later opnieuw",
+      "invalid_norad_id": "De ingevoerde NORAD-ID bestaat niet",
+      "invalid_interval": "Het updateinterval moet tussen 5 en 3600 seconden liggen.",
+      "integer_required": "Het updateinterval moet een geheel getal zijn (geen decimalen)."
+    }
+  },
+  "issues": {
+    "satellite_lost": {
+      "title": "Satelliet {satellite_name} ({satellite_id}) ontbreekt",
+      "description": "CelesTrak geeft al meer dan 24 uur onafgebroken de foutmelding 404 Not Found terug voor NORAD-ID {satellite_id}. De satelliet is mogelijk verbrand in de dampkring of buiten dienst gesteld."
+    }
+  }
+}
