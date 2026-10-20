@@ -2,8 +2,13 @@ name: Test Suite
 
 on:
   push:
+    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }},
 
 jobs:
   test:
@@ -28,7 +33,5 @@ jobs:
           pip install -r requirements_test.txt
 
       - name: Run Pytest with Coverage
-        env:
-          PYTHONPATH: .
         run: |
           pytest --cov=custom_components.satellite_orbital_tracker --cov-report=term-missing
