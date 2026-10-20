@@ -100,7 +100,7 @@ You can look up the unique NORAD Catalog Number (CATNR) for any spacecraft using
 Each satellite instance creates a dedicated device with five namespaced entities to prevent ID collisions when tracking multiple spacecraft:
 
 1. Status Sensor
-Entity ID Pattern: `sensor.[satellite_name]_status` (e.g., sensor.iss_zarya_status)
+Entity ID Pattern: `sensor.satellite_[name]_status` (e.g., `sensor.satellite_iss_zarya_status`)
 State: Current operational tracking state:
   - `Overhead Now!`: The satellite is currently above 10° elevation from your home coordinates (from its rise until its set).
   - `Approaching (...)`: The next pass event (rise) happens within 15 minutes.
@@ -116,24 +116,24 @@ Attributes:
   - `source` : Tracking engine identifier (Local SGP4 Engine)
 
 2. Orbital Altitude Sensor
-Entity ID Pattern: sensor.[satellite_name]_orbital_altitude
+Entity ID Pattern: `sensor.satellite_[name]_orbital_altitude`
 State: Physical orbital height above the Earth's geoid.
 Unit of Measurement: km
 State Class: measurement
 
 3. Next Pass Max Elevation Sensor
-Entity ID Pattern: sensor.[satellite_name]_next_pass_max_elevation
+Entity ID Pattern: `sensor.satellite_[name]_next_pass_max_elevation`
 State: Peak sky elevation angle for the next upcoming overhead pass.
 Unit of Measurement: °
 State Class: measurement
 
 4. Next Pass Time Sensor
-Entity ID Pattern: sensor.[satellite_name]_next_pass_time
+Entity ID Pattern: `sensor.satellite_[name]_next_pass_time`
 State: Date and time of the next upcoming pass over your home coordinates (a timestamp, displayed in your Home Assistant time zone).
 Device Class: timestamp
 
 5. Next Pass Time Remaining Sensor
-Entity ID Pattern: sensor.[satellite_name]_next_pass_time_remaining
+Entity ID Pattern: `sensor.satellite_[name]_next_pass_time_remaining`
 State: Seconds until the next upcoming pass, handy for automations that prepare for a pass.
 Unit of Measurement: s
 State Class: measurement
@@ -163,27 +163,23 @@ Map Options Explained:
 - `focus: true`: Keeps this entity in view when the map moves and zooms to show your entities.
 - `theme_mode: auto`: Automatically adjusts to match your dashboard's light or dark theme mode.
 
-## Recommanded Astronauts Crew Members on ISS Card Setup
+## Recommended Astronauts Crew Members on ISS Card Setup
+
+Adjust the entity IDs (the two `sensor.satellite_iss_zarya_...` names) if yours are different: see **Developer Tools -> States**.
 
 ```yaml
 type: markdown
 title: 🛰️ ISS (Zarya) Status & Crew
-content: >
-
-
-  Next Pass: {{ state_attr('sensor.satellite_iss_zarya_status',
-  'next_pass_event') }} at {{ states('sensor.satellite_iss_zarya_next_pass_time')
-  | as_timestamp | timestamp_custom('%Y-%m-%d %H:%M') }}
-
+content: |
+  {% set st = 'sensor.satellite_iss_zarya_status' %}
+  {% set nxt = states('sensor.satellite_iss_zarya_next_pass_time') %}
+  Next Pass: {{ state_attr(st, 'next_pass_event') or 'n/a' }}{% if nxt not in ['unknown', 'unavailable', 'none'] %} at {{ nxt | as_timestamp | timestamp_custom('%Y-%m-%d %H:%M') }}{% endif %}
 
   ---
 
-  ### Crew Members ({{ state_attr('sensor.satellite_iss_zarya_status',
-  'crew_count') }})
-
-  {% for member in state_attr('sensor.satellite_iss_zarya_status',
-  'crew_members') %} * **{{ member.name }}** ({{ member.agency }})
-    `{{ member.title }}`
+  ### Crew Members ({{ state_attr(st, 'crew_count') or 0 }})
+  {% for member in state_attr(st, 'crew_members') or [] %}
+  * **{{ member.name }}** ({{ member.agency }}) — `{{ member.title }}`
   {% endfor %}
 grid_options:
   rows: 10
