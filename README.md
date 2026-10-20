@@ -203,5 +203,37 @@ Orbital Drift: Satellites experience constant perturbations from atmospheric dra
 
 ---
 
+## Running the tests
+
+The tests use [pytest-homeassistant-custom-component](https://github.com/MatthewFlamm/pytest-homeassistant-custom-component), which needs a recent Python (CI runs 3.13 and 3.14).
+
+```bash
+git clone git@github.com:baylanger/satellite_orbital_tracker.git
+cd satellite_orbital_tracker
+
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements_test.txt
+
+pytest
+```
+
+With a coverage report (same as CI):
+
+```bash
+pytest --cov=custom_components.satellite_orbital_tracker --cov-report=term-missing
+```
+
+Run a single file or test:
+
+```bash
+pytest tests/test_config_flow.py
+pytest tests/test_config_flow.py::test_form_user
+```
+
+The tests never contact CelesTrak or NASA; all network calls are mocked.
+
+---
+
 ## License
 This project is licensed under the MIT License. See the LICENSE file for details.
