@@ -179,8 +179,11 @@ content: |
 
   ### Crew Members ({{ state_attr(st, 'crew_count') or 0 }})
   {% for member in state_attr(st, 'crew_members') or [] %}
-  * **{{ member.name }}** ({{ member.agency }}) — `{{ member.title }}`
-  {% endfor %}
+  * **{{ member.name }}** ({{ member.agency }})
+  {%- for part in (member.title or '').split(' and ') if part %}
+    * {{ part }}
+  {%- endfor %}
+  {%- endfor %}
 grid_options:
   rows: 10
   columns: 15
