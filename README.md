@@ -53,11 +53,14 @@ The integration includes built-in resilience for tracking satellite data from Ce
 ### Option 1: HACS (Recommended)
 
 1. Ensure you have [HACS](https://hacs.xyz/) installed.
-2. Open HACS in your Home Assistant dashboard and go to **Integrations**.
-3. Click the three dots in the top right corner and select **Custom repositories**.
-4. Paste your GitHub repository URL (`https://github.com/baylanger/satellite_orbital_tracker`) and select **Integration** as the category.
-5. Click **Add**.
-6. Find **Satellite Orbital Tracker** in the list, click **Download**, and **Restart** Home Assistant.
+2. Open HACS in your Home Assistant dashboard and search for **Satellite Orbital Tracker**.
+3. Click **Download**, then **Restart** Home Assistant.
+
+If it does not show up in the HACS search yet, add it as a custom repository first:
+
+1. In HACS, click the three dots in the top right corner and select **Custom repositories**.
+2. Paste the repository URL (`https://github.com/baylanger/satellite_orbital_tracker`) and select **Integration** as the category.
+3. Click **Add**, then find **Satellite Orbital Tracker** in the list, click **Download**, and **Restart** Home Assistant.
 
 ### Option 2: Manual Installation
 
