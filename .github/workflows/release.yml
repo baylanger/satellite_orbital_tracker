@@ -21,7 +21,10 @@ jobs:
 
       - name: Create integration zip
         run: |
-          zip -r satellite_orbital_tracker.zip .
+          # HACS unpacks the zip straight into custom_components/satellite_orbital_tracker/,
+          # so it must contain only the integration files (manifest.json at the zip root).
+          cd custom_components/satellite_orbital_tracker
+          zip -r ../../satellite_orbital_tracker.zip .
 
       - name: Upload release asset
         env:
