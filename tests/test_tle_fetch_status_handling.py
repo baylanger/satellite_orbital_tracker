@@ -14,6 +14,7 @@ from custom_components.satellite_orbital_tracker.coordinator import SatelliteDat
 from conftest import (
     TEST_NORAD_ID,
     TEST_SATELLITE_NAME,
+    TEST_TIMESCALE,
     TEST_TLE_LINE1,
     TEST_TLE_LINE2,
 )
@@ -29,7 +30,7 @@ def _make_coordinator(hass: HomeAssistant) -> SatelliteDataUpdateCoordinator:
         data={"norad_id": TEST_NORAD_ID, "update_interval": 120},
     )
     config_entry.add_to_hass(hass)
-    return SatelliteDataUpdateCoordinator(hass, config_entry)
+    return SatelliteDataUpdateCoordinator(hass, config_entry, TEST_TIMESCALE)
 
 
 def _create_lost_issue(hass: HomeAssistant) -> None:

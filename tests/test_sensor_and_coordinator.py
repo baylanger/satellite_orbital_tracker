@@ -22,6 +22,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from conftest import (
     TEST_NORAD_ID,
     TEST_SATELLITE_NAME,
+    TEST_TIMESCALE,
     TEST_TLE_LINE1,
     TEST_TLE_LINE2,
     ISS_NORAD_ID,
@@ -579,7 +580,7 @@ async def test_coordinator_corrupted_cache_fallback(hass: HomeAssistant) -> None
         )
 
         # Should raise UpdateFailed because cache is invalid and fetch failed
-        coordinator = SatelliteDataUpdateCoordinator(hass, config_entry)
+        coordinator = SatelliteDataUpdateCoordinator(hass, config_entry, TEST_TIMESCALE)
         with pytest.raises(UpdateFailed):
             await coordinator._async_update_data()
 
@@ -608,7 +609,7 @@ async def test_coordinator_tle_cache_parse_exception(hass: HomeAssistant) -> Non
             status=200,
             body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}",
         )
-        coordinator = SatelliteDataUpdateCoordinator(hass, config_entry)
+        coordinator = SatelliteDataUpdateCoordinator(hass, config_entry, TEST_TIMESCALE)
         data = await coordinator._async_update_data()
         assert data["latitude"] is not None
 
@@ -627,7 +628,7 @@ async def test_coordinator_dynamic_title_update(hass: HomeAssistant) -> None:
             status=200,
             body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}",
         )
-        coordinator = SatelliteDataUpdateCoordinator(hass, config_entry)
+        coordinator = SatelliteDataUpdateCoordinator(hass, config_entry, TEST_TIMESCALE)
         await coordinator._async_update_data()
 
         # Verify entry title was updated to match the fetched name
@@ -655,7 +656,7 @@ async def test_coordinator_crew_scrape_failure_fallback(hass: HomeAssistant) -> 
             status=500,
         )
 
-        coordinator = SatelliteDataUpdateCoordinator(hass, config_entry)
+        coordinator = SatelliteDataUpdateCoordinator(hass, config_entry, TEST_TIMESCALE)
         coordinator.crew_members = [{"name": "Cached Astronaut", "agency": "NASA", "title": "Commander", "expedition": "Expedition 70"}]
 
         data = await coordinator._async_update_data()
@@ -674,7 +675,7 @@ async def test_coordinator_24hr_404_repair_issue_creation(hass: HomeAssistant) -
     # Initialize the issue registry domain entry so ir.async_create_issue doesn't fail
     issue_registry = ir.async_get(hass)
 
-    coordinator = SatelliteDataUpdateCoordinator(hass, config_entry)
+    coordinator = SatelliteDataUpdateCoordinator(hass, config_entry, TEST_TIMESCALE)
     coordinator.first_404_timestamp = datetime.now(timezone.utc) - timedelta(hours=25)
 
     with aioresponses() as m:

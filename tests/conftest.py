@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 import pytest
 from homeassistant.config_entries import ConfigEntryState
+from skyfield.api import load
 
 # Add the repository root directory to sys.path so custom_components can be imported correctly during test execution
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -16,6 +17,9 @@ def auto_enable_custom_integrations(enable_custom_integrations):
     yield
 
 """Common fixtures and test constants for Satellite Orbital Tracker."""
+# Skyfield timescale shared by tests that build a coordinator directly (the integration loads it in the executor)
+TEST_TIMESCALE = load.timescale()
+
 # Centralized Test Constants representing CSS (TIANHE) test data
 TEST_NORAD_ID = "48274"
 TEST_SATELLITE_NAME = "CSS (TIANHE)"
