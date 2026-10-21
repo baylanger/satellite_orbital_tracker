@@ -44,8 +44,10 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         # Initialize Home Assistant Store helper for persistent disk caching of TLE elements
         self.store = Store(hass, 1, f"{DOMAIN}_{self.satellite_id}")
 
-        # Fetch configured sensor position update interval (default to 120s, minimum enforced at 5s)
-        update_interval_sec = entry.options.get("update_interval", 120)
+        # Fetch configured sensor position update interval (default to 120s, minimum enforced at 5s).
+        # The value chosen during setup lives in entry.data; the options flow stores later changes in
+        # entry.options, which take precedence (same lookup order as the options flow).
+        update_interval_sec = entry.options.get("update_interval", entry.data.get("update_interval", 120))
 
         super().__init__(
             hass,
