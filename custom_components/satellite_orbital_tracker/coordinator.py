@@ -9,7 +9,8 @@ import aiohttp
 from bs4 import BeautifulSoup
 import re
 
-from skyfield.api import EarthSatellite, load, wgs84
+from skyfield.api import EarthSatellite, wgs84
+from skyfield.timelib import Timescale
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
@@ -34,8 +35,12 @@ PASS_MIN_ELEVATION_DEGREES = 10.0              # Elevation above the horizon at 
 class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
     """Data update coordinator for tracking a specific satellite."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        """Initialize coordinator and configure tracking endpoints and schedules."""
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, ts: Timescale) -> None:
+        """Initialize coordinator and configure tracking endpoints and schedules.
+
+        The Skyfield timescale reads data files from disk, so the caller builds it in the executor
+        (see async_setup_entry) and passes it in instead of loading it here on the event loop.
+        """
         self.entry = entry
         self.satellite_id = entry.data["norad_id"]
         self.satellite_name = f"Satellite {self.satellite_id}"
@@ -59,7 +64,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         # Listen for option changes so the interval updates live without restarting Home Assistant
         entry.async_on_unload(entry.add_update_listener(self.async_update_listener))
 
-        self.ts = load.timescale()
+        self.ts = ts
         self.satellite = None
         self.last_tle_fetch = None        # Timestamp of last SUCCESSFUL fetch
         self.last_tle_attempt = None      # Timestamp of last fetch ATTEMPT (success or fail)
