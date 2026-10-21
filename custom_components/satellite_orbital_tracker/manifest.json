@@ -14,5 +14,5 @@
     "skyfield==1.55",
     "beautifulsoup4"
   ],
-  "version": "v1.0.10"
+  "version": "v1.1.0"
 }
