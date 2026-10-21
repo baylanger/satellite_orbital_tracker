@@ -9,7 +9,13 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.satellite_orbital_tracker.const import DOMAIN
 
-from conftest import ISS_NORAD_ID, ISS_SATELLITE_NAME, ISS_TLE_LINE1, ISS_TLE_LINE2
+from conftest import (
+    ISS_NORAD_ID,
+    ISS_SATELLITE_NAME,
+    ISS_TLE_LINE1,
+    ISS_TLE_LINE2,
+    TEST_TIMESCALE,
+)
 
 NASA_URL = "https://www.nasa.gov/humans-in-space/astronauts/"
 T0 = datetime(2026, 10, 11, 12, 0, 0, tzinfo=timezone.utc)
@@ -22,7 +28,7 @@ HTML = """
 async def _coordinator(hass: HomeAssistant) -> SatelliteDataUpdateCoordinator:
     entry = MockConfigEntry(domain=DOMAIN, title=ISS_SATELLITE_NAME, data={"norad_id": ISS_NORAD_ID, "update_interval": 120})
     entry.add_to_hass(hass)
-    coordinator = SatelliteDataUpdateCoordinator(hass, entry)
+    coordinator = SatelliteDataUpdateCoordinator(hass, entry, TEST_TIMESCALE)
     from skyfield.api import EarthSatellite
 
     coordinator.satellite = EarthSatellite(ISS_TLE_LINE1, ISS_TLE_LINE2, ISS_SATELLITE_NAME, coordinator.ts)

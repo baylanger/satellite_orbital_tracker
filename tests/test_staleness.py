@@ -14,7 +14,13 @@ from custom_components.satellite_orbital_tracker.coordinator import (
     SatelliteDataUpdateCoordinator,
 )
 
-from conftest import TEST_NORAD_ID, TEST_SATELLITE_NAME, TEST_TLE_LINE1, TEST_TLE_LINE2
+from conftest import (
+    TEST_NORAD_ID,
+    TEST_SATELLITE_NAME,
+    TEST_TIMESCALE,
+    TEST_TLE_LINE1,
+    TEST_TLE_LINE2,
+)
 
 NOW = datetime(2026, 10, 11, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -22,7 +28,7 @@ NOW = datetime(2026, 10, 11, 12, 0, 0, tzinfo=timezone.utc)
 def _coordinator(hass: HomeAssistant) -> SatelliteDataUpdateCoordinator:
     entry = MockConfigEntry(domain=DOMAIN, title=TEST_SATELLITE_NAME, data={"norad_id": TEST_NORAD_ID, "update_interval": 120})
     entry.add_to_hass(hass)
-    coordinator = SatelliteDataUpdateCoordinator(hass, entry)
+    coordinator = SatelliteDataUpdateCoordinator(hass, entry, TEST_TIMESCALE)
     coordinator.satellite = EarthSatellite(TEST_TLE_LINE1, TEST_TLE_LINE2, TEST_SATELLITE_NAME, coordinator.ts)
     coordinator.last_tle_attempt = NOW
     coordinator.last_tle_fetch = NOW - timedelta(hours=3)

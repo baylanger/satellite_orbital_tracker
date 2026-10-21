@@ -8,7 +8,11 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.satellite_orbital_tracker.const import DOMAIN
 from custom_components.satellite_orbital_tracker.coordinator import SatelliteDataUpdateCoordinator
 
-from conftest import TEST_NORAD_ID, TEST_SATELLITE_NAME
+from conftest import (
+    TEST_NORAD_ID,
+    TEST_SATELLITE_NAME,
+    TEST_TIMESCALE,
+)
 
 NOW = datetime(2026, 10, 11, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -20,7 +24,7 @@ def _make_coordinator(hass: HomeAssistant) -> SatelliteDataUpdateCoordinator:
         data={"norad_id": TEST_NORAD_ID, "update_interval": 120},
     )
     entry.add_to_hass(hass)
-    coordinator = SatelliteDataUpdateCoordinator(hass, entry)
+    coordinator = SatelliteDataUpdateCoordinator(hass, entry, TEST_TIMESCALE)
     coordinator.satellite = object()  # only identity matters for the cache key
     return coordinator
 

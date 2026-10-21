@@ -8,13 +8,17 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.satellite_orbital_tracker.const import DOMAIN
 from custom_components.satellite_orbital_tracker.coordinator import SatelliteDataUpdateCoordinator
 
-from conftest import TEST_NORAD_ID, TEST_SATELLITE_NAME
+from conftest import (
+    TEST_NORAD_ID,
+    TEST_SATELLITE_NAME,
+    TEST_TIMESCALE,
+)
 
 
 def _coordinator(hass: HomeAssistant, data: dict, options: dict | None = None) -> SatelliteDataUpdateCoordinator:
     entry = MockConfigEntry(domain=DOMAIN, title=TEST_SATELLITE_NAME, data=data, options=options or {})
     entry.add_to_hass(hass)
-    return SatelliteDataUpdateCoordinator(hass, entry)
+    return SatelliteDataUpdateCoordinator(hass, entry, TEST_TIMESCALE)
 
 
 @pytest.mark.parametrize(
