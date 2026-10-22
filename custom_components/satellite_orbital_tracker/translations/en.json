@@ -16,6 +16,7 @@
     "error": {
       "cannot_connect": "Failed to connect to CelesTrak, try later",
       "invalid_norad_id": "The entered NORAD ID does not exist",
+      "norad_id_not_numeric": "A NORAD ID contains digits only (e.g. 25544)",
       "invalid_interval": "The update interval must be between 5 and 3600 seconds.",
       "integer_required": "The update interval must be a whole number (no decimals)."
     }
