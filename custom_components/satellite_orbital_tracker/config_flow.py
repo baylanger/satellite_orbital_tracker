@@ -11,7 +11,7 @@ from homeassistant.data_entry_flow import FlowResult
 import homeassistant.helpers.selector as selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import DOMAIN
+from .const import DOMAIN, normalize_norad_id
 
 class CannotConnect(Exception):
     """Error to indicate we cannot connect to the CelesTrak API endpoint."""
@@ -62,12 +62,15 @@ class SatelliteOrbitalTrackerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
 
         if user_input is not None:
             interval = user_input.get("update_interval", 120)
-            norad_id = str(user_input["norad_id"]).strip()
+            norad_id = normalize_norad_id(user_input["norad_id"])
 
-            # 1. Prevent invalid non-integer float inputs (e.g. 4.5 seconds)
-            if isinstance(interval, float) and not interval.is_integer():
+            # 1. A NORAD catalog number is digits only; anything else would also end up in the CelesTrak URL
+            if norad_id is None:
+                errors["norad_id"] = "norad_id_not_numeric"
+            # 2. Prevent invalid non-integer float inputs (e.g. 4.5 seconds)
+            elif isinstance(interval, float) and not interval.is_integer():
                 errors["update_interval"] = "integer_required"
-            # 2. Validate that update interval falls within the permitted bounds (5s to 3600s)
+            # 3. Validate that update interval falls within the permitted bounds (5s to 3600s)
             elif not 5 <= int(interval) <= 3600:
                 errors["update_interval"] = "invalid_interval"
             else:

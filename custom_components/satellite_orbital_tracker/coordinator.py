@@ -18,7 +18,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import DOMAIN
+from .const import DOMAIN, normalize_norad_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,7 +42,8 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         (see async_setup_entry) and passes it in instead of loading it here on the event loop.
         """
         self.entry = entry
-        self.satellite_id = entry.data["norad_id"]
+        # Entries created before the config flow normalized the ID may still hold leading zeros ("025544")
+        self.satellite_id = normalize_norad_id(entry.data["norad_id"]) or entry.data["norad_id"]
         self.satellite_name = f"Satellite {self.satellite_id}"
         self.tle_url = f"https://celestrak.org/NORAD/elements/gp.php?CATNR={self.satellite_id}&FORMAT=tle"
 
