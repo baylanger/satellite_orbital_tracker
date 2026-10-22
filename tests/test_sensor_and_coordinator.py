@@ -237,6 +237,10 @@ async def test_coordinator_skips_fetch_if_cache_fresh(
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
+        # No CelesTrak URL is mocked, so a request would still "succeed" through the cache fallback:
+        # check explicitly that nothing was sent to CelesTrak.
+        assert not any(url.host == "celestrak.org" for _, url in m.requests)
+
     # Verify successful setup without querying the external CelesTrak API
     entity_registry = er.async_get(hass)
     entries = er.async_entries_for_config_entry(entity_registry, config_entry.entry_id)
