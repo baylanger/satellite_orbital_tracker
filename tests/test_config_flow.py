@@ -248,3 +248,26 @@ async def test_form_unexpected_parser_exception(hass: HomeAssistant) -> None:
 
         assert result2["type"] == FlowResultType.FORM
         assert result2["errors"] == {"norad_id": "invalid_norad_id"}
+
+
+async def test_form_unknown_norad_id_plain_text_answer(hass: HomeAssistant) -> None:
+    """An unknown NORAD ID answered with HTTP 200 and plain text is an invalid ID, not a connection error."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": "user"}
+    )
+
+    with aioresponses() as m:
+        m.get(
+            "https://celestrak.org/NORAD/elements/gp.php?CATNR=99999&FORMAT=json",
+            status=200,
+            body="No GP data found",
+            content_type="text/plain",
+        )
+
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"norad_id": "99999", "update_interval": 120},
+        )
+
+        assert result2["type"] == FlowResultType.FORM
+        assert result2["errors"] == {"norad_id": "invalid_norad_id"}
