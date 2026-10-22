@@ -49,19 +49,15 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         # Initialize Home Assistant Store helper for persistent disk caching of TLE elements
         self.store = Store(hass, 1, f"{DOMAIN}_{self.satellite_id}")
 
-        # Fetch configured sensor position update interval (default to 120s, minimum enforced at 5s).
-        # The value chosen during setup lives in entry.data; the options flow stores later changes in
-        # entry.options, which take precedence (same lookup order as the options flow).
-        update_interval_sec = entry.options.get("update_interval", entry.data.get("update_interval", 120))
-
+        # Position update interval chosen at setup or later in the options (see _configured_update_interval)
         super().__init__(
             hass,
             _LOGGER,
             name=f"{DOMAIN}_{self.satellite_id}",
-            update_interval=timedelta(seconds=update_interval_sec),
+            update_interval=self._configured_update_interval(entry),
         )
 
-        # Listen for option changes so the interval updates live without restarting Home Assistant
+        # Listen for option changes to apply a new interval without restarting Home Assistant
         entry.async_on_unload(entry.add_update_listener(self.async_update_listener))
 
         self.ts = ts
@@ -86,9 +82,22 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
     @staticmethod
-    async def async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-        """Handle options update by reloading the config entry dynamically."""
-        await hass.config_entries.async_reload(entry.entry_id)
+    def _configured_update_interval(entry: ConfigEntry) -> timedelta:
+        """Return the position update interval for an entry (default 120s).
+
+        The value chosen during setup lives in entry.data; the options flow stores later changes in
+        entry.options, which take precedence (same lookup order as the options flow).
+        """
+        return timedelta(seconds=entry.options.get("update_interval", entry.data.get("update_interval", 120)))
+
+    async def async_update_listener(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Reload the config entry when the update interval option changed.
+
+        Home Assistant calls update listeners for every change to the entry, including the title update
+        made after a TLE download, so only reload when the interval really differs from the running one.
+        """
+        if self._configured_update_interval(entry) != self.update_interval:
+            await hass.config_entries.async_reload(entry.entry_id)
 
     @override
     async def _async_update_data(self):
@@ -109,6 +118,11 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                             self.satellite = EarthSatellite(line1, line2, name, self.ts)
                             self.last_tle_fetch = datetime.fromisoformat(fetch_ts_str)
                             self.satellite_name = name
+                            # Carry the 12-hour schedule over restarts and reloads: treat the cached download
+                            # as the last attempt so a fresh cache is not downloaded again. A timestamp in the
+                            # future (clock moved back) is ignored, so the TLE is fetched right away instead.
+                            if self.last_tle_fetch <= now:
+                                self.last_tle_attempt = self.last_tle_fetch
                             _LOGGER.debug("Successfully loaded TLE cache from disk for %s", name)
                     except Exception as err:
                         _LOGGER.debug("Failed to parse stored TLE cache: %s", err)
@@ -430,13 +444,13 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                     "timestamp": self.last_tle_fetch.isoformat(),
                 })
 
-                # Dynamically update the config entry title if CelesTrak reports an updated official name
+                # Update the config entry title if CelesTrak reports a new official name. Only the title is
+                # changed, and only when it differs, so the entry is not needlessly saved or reloaded.
                 if parsed_name != self.satellite_name:
                     self.satellite_name = parsed_name
                     hass_entry = self.hass.config_entries.async_get_entry(self.entry.entry_id)
-                    if hass_entry:
-                        new_data = {**hass_entry.data, "satellite_name": parsed_name}
-                        self.hass.config_entries.async_update_entry(hass_entry, title=parsed_name, data=new_data)
+                    if hass_entry and hass_entry.title != parsed_name:
+                        self.hass.config_entries.async_update_entry(hass_entry, title=parsed_name)
 
                 return True, status_code
         except Exception as err:
