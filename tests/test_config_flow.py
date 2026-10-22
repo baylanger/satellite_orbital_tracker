@@ -176,16 +176,17 @@ async def test_options_flow_invalid_interval(hass: HomeAssistant) -> None:
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "init"
 
-    # Probatio raises MultipleInvalid directly on invalid schema input during async_configure
+    # Depending on the Home Assistant version, invalid schema input surfaces either as
+    # probatio's MultipleInvalid or as the flow manager's InvalidData wrapper.
     try:
         await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={"update_interval": 5000},
         )
-    except probatio.error.MultipleInvalid as err:
+    except (probatio.error.MultipleInvalid, data_entry_flow.InvalidData) as err:
         assert "update_interval" in str(err)
     else:
-        pytest.fail("Expected MultipleInvalid exception for out-of-range interval")
+        pytest.fail("Expected a schema validation error for out-of-range interval")
 
 async def test_form_malformed_or_empty_celestrak_response(hass: HomeAssistant) -> None:
     """Test handling of 200 OK with empty brackets or malformed JSON payload from CelesTrak."""
