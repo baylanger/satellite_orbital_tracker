@@ -33,7 +33,10 @@ async def _async_get_satellite_name(hass: HomeAssistant, norad_id: str) -> str:
             if response.status != 200:
                 raise CannotConnect
 
-            data = await response.json()
+            # Do not insist on a JSON content type: CelesTrak can answer an unknown catalog number with HTTP 200
+            # and a plain-text "No GP data found". That body then fails to parse and is reported as an invalid
+            # NORAD ID below, instead of the ContentTypeError (an aiohttp.ClientError) showing "cannot connect".
+            data = await response.json(content_type=None)
             if not data or not isinstance(data, list) or len(data) == 0:
                 raise InvalidNoradId
 
