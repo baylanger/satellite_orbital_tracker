@@ -31,6 +31,7 @@ CREW_FETCH_INTERVAL = timedelta(hours=24)      # Only scrape NASA crew manifest 
 CREW_RETRY_INTERVAL = timedelta(hours=1)       # Retry interval after a failed or empty crew scrape
 NO_PASS_RECHECK_INTERVAL = timedelta(hours=1)  # How often to search again when no pass was found in the window
 PASS_MIN_ELEVATION_DEGREES = 10.0              # Elevation above the horizon at which a pass counts as visible
+PASS_PEAK_LOOKBACK = timedelta(hours=2)        # How far back to look for the peak of a pass already under way
 
 class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
     """Data update coordinator for tracking a specific satellite."""
@@ -335,23 +336,11 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             for i, (ti, event) in enumerate(zip(times, events)):
                 event_time = ti.utc_datetime()
                 if event_time > now:
-                    max_alt = None
-                    for future_ti, future_event in zip(times[i:], events[i:]):
-                        if future_event == 1:
-                            difference = self.satellite - self.home_observer
-                            topocentric = difference.at(future_ti)
-                            alt, _, _ = topocentric.altaz()
-                            max_alt = round(alt.degrees, 1)
-                            break
-
-                    if max_alt is None:
-                        for future_ti, future_event in zip(times, events):
-                            if future_ti.utc_datetime() > now and future_event == 1:
-                                difference = self.satellite - self.home_observer
-                                topocentric = difference.at(future_ti)
-                                alt, _, _ = topocentric.altaz()
-                                max_alt = round(alt.degrees, 1)
-                                break
+                    max_alt = self._pass_peak_altitude(times[i:], events[i:])
+                    if max_alt is None and event == 2:
+                        # The pass is under way and already past its highest point, so its culmination is
+                        # earlier than the search window: look back for it instead of reporting the next pass.
+                        max_alt = self._previous_culmination_altitude(now)
 
                     return {
                         "time": event_time.isoformat(),
@@ -362,6 +351,39 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Could not compute next pass: %s", err)
 
         return {"time": None, "event": "Unknown", "max_alt": None}
+
+    def _culmination_altitude(self, ti) -> float:
+        """Return the satellite's elevation above the home horizon at time ti, in degrees (one decimal)."""
+        alt, _, _ = (self.satellite - self.home_observer).at(ti).altaz()
+        return round(float(alt.degrees), 1)
+
+    def _pass_peak_altitude(self, times, events) -> float | None:
+        """Return the highest elevation of the pass the events belong to, or None if it is not among them.
+
+        The search stops at the pass's "Set": a culmination after it belongs to the following pass.
+        """
+        for ti, event in zip(times, events):
+            if event == 1:
+                return self._culmination_altitude(ti)
+            if event == 2:
+                break
+        return None
+
+    def _previous_culmination_altitude(self, now: datetime) -> float | None:
+        """Return the peak elevation of the pass in progress, whose culmination happened before now."""
+        times, events = self.satellite.find_events(
+            self.home_observer,
+            self.ts.from_datetime(now - PASS_PEAK_LOOKBACK),
+            self.ts.from_datetime(now),
+            altitude_degrees=PASS_MIN_ELEVATION_DEGREES,
+        )
+        for ti, event in reversed(list(zip(times, events))):
+            if event == 1:
+                return self._culmination_altitude(ti)
+            if event == 2:
+                # A set between that culmination and now means it was an earlier pass
+                break
+        return None
 
     def _record_satellite_missing(self) -> None:
         """Track a continuous "satellite not found" streak and raise a repair issue once it exceeds 24 hours."""
