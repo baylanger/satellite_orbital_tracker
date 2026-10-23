@@ -28,7 +28,7 @@ TLE_RETRY_INTERVAL = timedelta(hours=1)        # Shorter retry interval if the l
 LOST_SATELLITE_WINDOW = timedelta(hours=24)    # Duration of continuous 404s before raising a repair issue
 MAX_CONSECUTIVE_CALC_FAILURES = 5              # Calculation errors in a row before entities go unavailable
 CREW_FETCH_INTERVAL = timedelta(hours=24)      # Only scrape NASA crew manifest once a day
-CREW_RETRY_INTERVAL = timedelta(hours=1)       # Retry interval after a failed or empty crew scrape
+CREW_RETRY_INTERVAL = timedelta(hours=24)      # Retry interval after a failed or empty crew scrape
 NO_PASS_RECHECK_INTERVAL = timedelta(hours=1)  # How often to search again when no pass was found in the window
 PASS_MIN_ELEVATION_DEGREES = 10.0              # Elevation above the horizon at which a pass counts as visible
 PASS_PEAK_LOOKBACK = timedelta(hours=2)        # How far back to look for the peak of a pass already under way
@@ -254,13 +254,15 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         soup = BeautifulSoup(html_text, "html.parser")
         crew_list = []
 
-        # Locate the specific section header for current station occupants
+        # Locate the specific section header for current station occupants. The page also lists other astronauts
+        # with the same card layout, so without that section the crew cannot be told apart: return no crew, which
+        # keeps the previously scraped crew and retries later, instead of reporting every astronaut on the page.
         station_header = soup.find(lambda tag: tag.name in ["h2", "h3"] and "At the Space Station" in tag.text)
-        if station_header:
-            module_container = station_header.find_parent("div", class_="hds-module")
-            cards = module_container.find_all("div", class_="hds-meet-the-card") if module_container else soup.find_all("div", class_="hds-meet-the-card")
-        else:
-            cards = soup.find_all("div", class_="hds-meet-the-card")
+        module_container = station_header.find_parent("div", class_="hds-module") if station_header else None
+        if module_container is None:
+            _LOGGER.debug("NASA astronaut page layout not recognised: no 'At the Space Station' section found")
+            return []
+        cards = module_container.find_all("div", class_="hds-meet-the-card")
 
         # Parse individual astronaut profile cards
         for card in cards:
