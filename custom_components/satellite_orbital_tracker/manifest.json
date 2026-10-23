@@ -8,7 +8,7 @@
   "dependencies": [],
   "documentation": "https://github.com/baylanger/satellite_orbital_tracker",
   "integration_type": "service",
-  "iot_class": "local_polling",
+  "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/baylanger/satellite_orbital_tracker/issues",
   "requirements": [
     "skyfield==1.55",
