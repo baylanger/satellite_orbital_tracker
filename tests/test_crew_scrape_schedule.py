@@ -21,7 +21,9 @@ NASA_URL = "https://www.nasa.gov/humans-in-space/astronauts/"
 T0 = datetime(2026, 10, 11, 12, 0, 0, tzinfo=timezone.utc)
 CREW = [{"name": "A", "agency": "NASA", "title": "t", "expedition": None}]
 HTML = """
+<div class="hds-module"><h2>At the Space Station</h2>
 <div class="hds-meet-the-card"><h3>Anil Menon</h3><p>NASA astronaut and Expedition 74/75 Flight Engineer</p></div>
+</div>
 """
 
 
@@ -54,7 +56,7 @@ async def test_failed_scrape_not_retried_every_poll(hass: HomeAssistant) -> None
     await _update(coordinator, T0 + timedelta(minutes=4), scrape)
     assert scrape.await_count == 1
 
-    await _update(coordinator, T0 + timedelta(minutes=61), scrape)
+    await _update(coordinator, T0 + timedelta(minutes=1441), scrape)
     assert scrape.await_count == 2
 
 

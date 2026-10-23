@@ -43,6 +43,8 @@ async def test_iss_crew_sensor_attributes(
 
     # Mock HTML structure mirroring NASA's astronaut page format for crew parsing tests
     mock_nasa_html = """
+    <div class="hds-module">
+    <h2>At the Space Station</h2>
     <div class="hds-meet-the-card padding-right-7">
         <div class="hds-meet-the-content">
             <h3 class="heading-18">Anil Menon</h3>
@@ -54,6 +56,7 @@ async def test_iss_crew_sensor_attributes(
             <h3 class="heading-18">Pyotr Dubrov</h3>
             <p class="p-sm">Roscosmos cosmonaut and Expedition 74/75 Flight Engineer</p>
         </div>
+    </div>
     </div>
     """
 

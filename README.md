@@ -13,7 +13,7 @@
 
 Track the International Space Station (ISS), the Hubble Space Telescope, or any custom satellite simultaneously in Home Assistant.
 
-This integration operates entirely locally and does not rely on external cloud APIs except for fetching, every 12hrs, public orbital element sets (TLEs) from CelesTrak (not rate-limited).
+This integration operates entirely locally and does not rely on external cloud APIs except for fetching, every 12hrs, public orbital element sets (TLEs) from CelesTrak. The last download is saved, so restarting Home Assistant does not download them again.
 
 It is an advanced, high-precision custom integration for Home Assistant that tracks any satellite using real-time orbital mechanics. It uses local SGP4 orbit propagation using [Skyfield](https://rhodesmill.org/skyfield/) and your Home Assistant zone coordinates to calculate live subpoint positions and predict upcoming overhead passes.
 
@@ -36,7 +36,7 @@ Contributions, bug reports, and suggestions are always welcome! If you have an i
 - **Configurable Polling Interval**: Fine-tune your update frequency between 5 and 3600 seconds directly during setup or through the options flow.
 - **Multi-Language Support**: Fully localized with built-in translation dictionaries for English (`en`), French (`fr`), German (`de`), Español (`es`), Dutch (`nl`), Italian (`it).
 - **Map Optimized**: Exposes standard latitude, longitude, and elevation attributes natively compatible with Home Assistant's Map Card.
-- **ISS Crew Members**: When tracking the ISS, the list of current in-space astronauts is extracted, every 24hrs, from [NASA Human In Space](https://www.nasa.gov/humans-in-space/astronauts/) and added to the sensor. If NASA can't be reached or the page returns no crew, the previous list is kept and the integration retries every hour.
+- **ISS Crew Members**: When tracking the ISS, the list of current in-space astronauts is extracted, every 24hrs, from [NASA Human In Space](https://www.nasa.gov/humans-in-space/astronauts/) and added to the sensor. If NASA can't be reached, the page returns no crew, or the page's "At the Space Station" section can't be found (for example after a NASA site redesign), the previous list is kept and the integration retries every 24hrs.
 
 ### Robust Error Handling & Repair Notifications
 
@@ -80,7 +80,7 @@ In Home Assistant,
 
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| **NORAD ID** | String | *Required* | The catalog number of the satellite (e.g., `25544`). Used to query CelesTrak and compute orbital paths. |
+| **NORAD ID** | String | *Required* | The catalog number of the satellite (e.g., `25544`), digits only. Leading zeros are ignored (`025544` is the same satellite as `25544`). Used to query CelesTrak and compute orbital paths. |
 | **Update Interval** | Number | `120` | How often (in seconds) the sensor data and coordinates refresh (bounded between 5 and 3600 seconds). |
 
 5. Click **Submit**.
@@ -126,7 +126,7 @@ State Class: measurement
 
 3. Next Pass Max Elevation Sensor
 Entity ID Pattern: `sensor.satellite_[name]_next_pass_max_elevation`
-State: Peak sky elevation angle for the next upcoming overhead pass.
+State: Peak sky elevation angle for the next upcoming overhead pass. While a pass is in progress, it shows the peak of that pass until the satellite sets.
 Unit of Measurement: °
 State Class: measurement
 
@@ -196,7 +196,7 @@ grid_options:
 
 ## Public orbital element sets (TLEs)
 
-For each satellite, the integration fetches the public orbital element sets (TLEs) every 12 hours (or immediately upon startup; if the cached data becomes older than 43,200 seconds).
+For each satellite, the integration fetches the public orbital element sets (TLEs) every 12 hours. The last download is saved: at startup, or when the integration reloads after an options change, the saved TLEs are reused while they are less than 12 hours old, and fetched right away when they are older (or when none were saved yet).
 
 - Why 12 Hours?
 Orbital Drift: Satellites experience constant perturbations from atmospheric drag, Earth's non-uniform gravity field, and solar radiation pressure. Over time, predicting positions too far into the future using stale TLEs introduces increasing error.
