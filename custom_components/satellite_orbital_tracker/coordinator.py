@@ -4,7 +4,6 @@ from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 import logging
 from typing import override
-import aiohttp
 
 from bs4 import BeautifulSoup
 import re
