@@ -34,7 +34,7 @@ Contributions, bug reports, and suggestions are always welcome! If you have an i
 - **Automatic Home Overhead Pass Detection**: Automatically calculates your upcoming local overhead passes using your Home Assistant zone coordinates (`latitude`, `longitude`, `elevation`), exposing transition times and maximum elevation attributes.
 - **Automatic Satellite Identification & Naming**: Enter a NORAD ID (e.g., `25544` for the ISS), and the integration dynamically fetches the official satellite name directly from CelesTrak's GP data feed. This name is automatically used to register your device and format your sensor entity names (e.g., `Satellite ISS (Zarya)`).
 - **Configurable Polling Interval**: Fine-tune your update frequency between 5 and 3600 seconds directly during setup or through the options flow.
-- **Multi-Language Support**: Fully localized with built-in translation dictionaries for English (`en`), French (`fr`), German (`de`), Español (`es`), Dutch (`nl`), Italian (`it).
+- **Multi-Language Support**: Fully localized with built-in translation dictionaries for English (`en`), French (`fr`), German (`de`), Español (`es`), Dutch (`nl`), Italian (`it`).
 - **Map Optimized**: Exposes standard latitude, longitude, and elevation attributes natively compatible with Home Assistant's Map Card.
 - **ISS Crew Members**: When tracking the ISS, the list of current in-space astronauts is extracted, every 24hrs, from [NASA Human In Space](https://www.nasa.gov/humans-in-space/astronauts/) and added to the sensor. If NASA can't be reached, the page returns no crew, or the page's "At the Space Station" section can't be found (for example after a NASA site redesign), the previous list is kept and the integration retries every 24hrs.
 
@@ -139,6 +139,7 @@ Device Class: timestamp
 Entity ID Pattern: `sensor.satellite_[name]_next_pass_time_remaining`
 State: Seconds until the next upcoming pass, handy for automations that prepare for a pass.
 Unit of Measurement: s
+Device Class: duration
 State Class: measurement
 
 ---

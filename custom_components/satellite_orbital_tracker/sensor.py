@@ -167,6 +167,7 @@ class SatelliteNextPassRemainingSensor(SatelliteBaseSensor):
         super().__init__(coordinator, entry)
         self._attr_name = "Next Pass Time Remaining"
         self._attr_unique_id = f"{entry.entry_id}_next_pass_time_remaining"
+        self._attr_device_class = SensorDeviceClass.DURATION
         self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
         self._attr_state_class = SensorStateClass.MEASUREMENT
 
