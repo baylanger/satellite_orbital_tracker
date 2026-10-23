@@ -11,6 +11,24 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install Ruff
+        run: pip install ruff
+
+      - name: Lint (unused imports, undefined names)
+        run: ruff check --select F custom_components tests
+
   test:
     runs-on: ubuntu-latest
     strategy:

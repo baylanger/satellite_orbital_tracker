@@ -15,7 +15,6 @@ from conftest import (
     TEST_SATELLITE_NAME,
     TEST_TIMESCALE,
     TEST_TLE_LINE1,
-    TEST_TLE_LINE2,
 )
 
 ISSUE_ID = f"satellite_lost_{TEST_NORAD_ID}"

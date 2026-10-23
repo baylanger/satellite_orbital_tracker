@@ -1,6 +1,5 @@
 """Tests for the ISS crew scraping and sensor attribute exposure."""
 from datetime import datetime, timezone
-import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 from pytest_homeassistant_custom_component.common import MockConfigEntry

@@ -1,5 +1,5 @@
 """Test the Satellite Orbital Tracker config flow."""
-from unittest.mock import patch
+import pytest
 from custom_components.satellite_orbital_tracker.const import DOMAIN
 from aioresponses import aioresponses
 from pytest_homeassistant_custom_component.common import MockConfigEntry

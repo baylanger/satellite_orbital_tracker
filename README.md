@@ -205,7 +205,7 @@ Orbital Drift: Satellites experience constant perturbations from atmospheric dra
 
 ---
 
-## Running the tests
+## Running the tests (lint & pytest)
 
 The tests use [pytest-homeassistant-custom-component](https://github.com/MatthewFlamm/pytest-homeassistant-custom-component), which needs a recent Python (CI runs 3.13 and 3.14).
 
@@ -217,6 +217,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements_test.txt
 
+ruff check --select F custom_components tests
 pytest
 ```
 

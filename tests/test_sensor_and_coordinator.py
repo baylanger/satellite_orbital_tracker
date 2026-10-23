@@ -520,9 +520,6 @@ async def test_coordinator_refetches_when_cache_expired(
     entries = er.async_entries_for_config_entry(entity_registry, config_entry.entry_id)
     assert len(entries) > 0
 
-from homeassistant.helpers import event
-import pytest
-
 async def test_coordinator_background_polling_interval(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
