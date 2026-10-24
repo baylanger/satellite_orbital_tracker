@@ -1,5 +1,5 @@
 <p align="left">
-  <img src="https://raw.githubusercontent.com/baylanger/satellite_orbital_tracker/main/custom_components/satellite_orbital_tracker/brand/logo.png" alt="Satellite Orbital Tracker" width="200">
+  <img src="https://raw.githubusercontent.com/baylanger/satellite_orbital_tracker/main/custom_components/satellite_orbital_tracker/brand/logo@2x.png" alt="Satellite Orbital Tracker" width="200">
 </p>
 
 # Satellite Orbital Tracker Integration for Home Assistant
