@@ -1,6 +1,13 @@
 <p align="left">
-  <img src="https://raw.githubusercontent.com/baylanger/satellite_orbital_tracker/main/custom_components/satellite_orbital_tracker/brand/logo@2x.png" alt="Satellite Orbital Tracker" width="200">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="custom_components/satellite_orbital_tracker/brand/dark_logo@2x.png">
+    <source media="(prefers-color-scheme: light)" srcset="custom_components/satellite_orbital_tracker/brand/logo@2x.png">
+    <img alt="Satellite Orbital Tracker Logo" src="custom_components/satellite_orbital_tracker/brand/logo@2x.png" width="100%">
+  </picture>
+  <br>
 </p>
+
+---
 
 # Satellite Orbital Tracker Integration for Home Assistant
 
