@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone, timedelta
 import logging
+import math
 from typing import override
 
 from bs4 import BeautifulSoup
@@ -30,7 +31,9 @@ CREW_FETCH_INTERVAL = timedelta(hours=24)      # Only scrape NASA crew manifest 
 CREW_RETRY_INTERVAL = timedelta(hours=24)      # Retry interval after a failed or empty crew scrape
 NO_PASS_RECHECK_INTERVAL = timedelta(hours=1)  # How often to search again when no pass was found in the window
 PASS_MIN_ELEVATION_DEGREES = 10.0              # Elevation above the horizon at which a pass counts as visible
-PASS_PEAK_LOOKBACK = timedelta(hours=2)        # How far back to look for the peak of a pass already under way
+PASS_PEAK_LOOKBACK = timedelta(hours=2)        # How far back to look for the start and peak of a pass already under way
+PASS_SEARCH_MARGIN = timedelta(minutes=30)     # Search this far past 48h, so a pass starting near the end still gets its Set time
+PASS_UPDATE_INTERVAL = timedelta(seconds=5)    # Refresh this often while a pass is in progress (5 s is also the shortest interval the setup form allows)
 
 class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
     """Data update coordinator for tracking a specific satellite."""
@@ -50,12 +53,15 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         # Initialize Home Assistant Store helper for persistent disk caching of TLE elements
         self.store = Store(hass, 1, f"{DOMAIN}_{self.satellite_id}")
 
-        # Position update interval chosen at setup or later in the options (see _configured_update_interval)
+        # Position update interval chosen at setup or later in the options (see _configured_update_interval).
+        # update_interval itself is adjusted after every update (see _next_update_interval), so the chosen
+        # value is kept here.
+        self.configured_update_interval = self._configured_update_interval(entry)
         super().__init__(
             hass,
             _LOGGER,
             name=f"{DOMAIN}_{self.satellite_id}",
-            update_interval=self._configured_update_interval(entry),
+            update_interval=self.configured_update_interval,
         )
 
         # Listen for option changes to apply a new interval without restarting Home Assistant
@@ -97,7 +103,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         Home Assistant calls update listeners for every change to the entry, including the title update
         made after a TLE download, so only reload when the interval really differs from the running one.
         """
-        if self._configured_update_interval(entry) != self.update_interval:
+        if self._configured_update_interval(entry) != self.configured_update_interval:
             await hass.config_entries.async_reload(entry.entry_id)
 
     @override
@@ -177,6 +183,8 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             lat = float(subpoint.latitude.degrees)
             lon = float(subpoint.longitude.degrees)
             elevation = float(subpoint.elevation.km)
+            # Speed relative to the Earth's centre (the inertial frame the orbital elements are defined in)
+            speed_km_s = math.sqrt(sum(float(c) ** 2 for c in geocentric.velocity.km_per_s))
 
             next_pass = await self._async_get_next_pass(now)
             current_altitude = self._calculate_current_altitude(t)
@@ -195,13 +203,26 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             elif time_to_pass is not None and 0 <= time_to_pass <= 900:
                 state_val = f"Approaching ({next_pass.get('event', 'Pass')})"
 
+            # Length of the pass in progress (or of the next one), and what is left of the pass in progress
+            pass_start = datetime.fromisoformat(next_pass["pass_start"]) if next_pass.get("pass_start") else None
+            pass_end = datetime.fromisoformat(next_pass["pass_end"]) if next_pass.get("pass_end") else None
+            pass_duration = (pass_end - pass_start).total_seconds() if pass_start and pass_end else None
+            pass_time_remaining = 0.0  # no pass in progress
+            if current_altitude is not None and current_altitude >= PASS_MIN_ELEVATION_DEGREES:
+                if pass_end is None or (pass_start is not None and pass_start > now):
+                    pass_time_remaining = None  # overhead, but the end of this pass is not known
+                else:
+                    pass_time_remaining = max(0.0, (pass_end - now).total_seconds())
+
             self.calc_failures = 0
+            self.update_interval = self._next_update_interval(current_altitude, time_to_pass, next_pass.get("event"))
             return {
                 "tle_epoch": self.satellite.epoch.utc_datetime().isoformat(),
                 "tle_last_fetched": self.last_tle_fetch.isoformat() if self.last_tle_fetch else None,
                 "latitude": lat,
                 "longitude": lon,
                 "altitude_km": elevation,
+                "speed_km_s": speed_km_s,
                 "timestamp": now,
                 "status": state_val,
                 "next_pass_time": next_pass.get("time"),
@@ -210,17 +231,44 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                 "crew_count": len(crew_data),
                 "crew_members": crew_data,
                 "next_pass_time_remaining": time_to_pass,
+                "pass_start": next_pass.get("pass_start"),
+                "pass_end": next_pass.get("pass_end"),
+                "pass_duration": pass_duration,
+                "pass_time_remaining": pass_time_remaining,
             }
 
         except Exception as err:
             # Catch unexpected orbital calculation errors and fallback to previous valid state if available
             _LOGGER.warning("Orbital calculation warning for %s (%s).", self.satellite_name, err)
             self.calc_failures += 1
+            self.update_interval = self.configured_update_interval  # no fast polling on a failing calculation
             if self.data and self.calc_failures < MAX_CONSECUTIVE_CALC_FAILURES:
                 return self.data
             # Do not keep serving an ever older position as if it were current: after repeated failures
             # (or when there was never a valid result) let the entities become unavailable instead.
             raise UpdateFailed(f"Orbital calculation failed: {err}")
+
+    def _next_update_interval(
+        self, current_altitude: float | None, time_to_pass: float | None, next_event: str | None
+    ) -> timedelta:
+        """Return how long to wait for the next update.
+
+        While a pass is in progress the pass countdown and the speed change visibly, so the satellite is
+        refreshed every PASS_UPDATE_INTERVAL. Just before a pass, the next update is timed to its rise, so
+        the fast updates start when the pass does instead of up to one interval later. Otherwise the
+        configured interval applies, and it is never lengthened.
+        """
+        configured = self.configured_update_interval
+        if current_altitude is not None and current_altitude >= PASS_MIN_ELEVATION_DEGREES:
+            return min(configured, PASS_UPDATE_INTERVAL)
+        if (
+            next_event is not None
+            and next_event.startswith("Rise")
+            and time_to_pass is not None
+            and 0 <= time_to_pass < configured.total_seconds()
+        ):
+            return min(configured, max(timedelta(seconds=time_to_pass + 1), timedelta(seconds=1)))
+        return configured
 
     async def _async_fetch_iss_crew_from_nasa(self) -> list[dict]:
         """Scrape the ISS crew from NASA, falling back to the previously cached crew members on failure."""
@@ -327,7 +375,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         """Find the next upcoming satellite pass over home coordinates using Skyfield ephemeris."""
         try:
             t0 = self.ts.from_datetime(now)
-            t1 = self.ts.from_datetime(now + timedelta(hours=48))
+            t1 = self.ts.from_datetime(now + timedelta(hours=48) + PASS_SEARCH_MARGIN)
 
             times, events = self.satellite.find_events(
                 self.home_observer, t0, t1, altitude_degrees=PASS_MIN_ELEVATION_DEGREES
@@ -338,20 +386,27 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                 event_time = ti.utc_datetime()
                 if event_time > now:
                     max_alt = self._pass_peak_altitude(times[i:], events[i:])
-                    if max_alt is None and event == 2:
-                        # The pass is under way and already past its highest point, so its culmination is
-                        # earlier than the search window: look back for it instead of reporting the next pass.
-                        max_alt = self._previous_culmination_altitude(now)
+                    pass_end = self._pass_set_time(times[i:], events[i:])
+                    pass_start = event_time if event == 0 else None
+                    if event != 0:
+                        # The pass is already under way, so its rise (and, once it is past its highest point,
+                        # its culmination) is earlier than the search window: look back for it instead of
+                        # reporting the next pass.
+                        pass_start, past_peak = self._started_pass(now)
+                        if max_alt is None:
+                            max_alt = past_peak
 
                     return {
                         "time": event_time.isoformat(),
                         "event": event_names[event],
-                        "max_alt": max_alt
+                        "max_alt": max_alt,
+                        "pass_start": pass_start.isoformat() if pass_start else None,
+                        "pass_end": pass_end.isoformat() if pass_end else None,
                     }
         except Exception as err:
             _LOGGER.debug("Could not compute next pass: %s", err)
 
-        return {"time": None, "event": "Unknown", "max_alt": None}
+        return {"time": None, "event": "Unknown", "max_alt": None, "pass_start": None, "pass_end": None}
 
     def _culmination_altitude(self, ti) -> float:
         """Return the satellite's elevation above the home horizon at time ti, in degrees (one decimal)."""
@@ -370,21 +425,37 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                 break
         return None
 
-    def _previous_culmination_altitude(self, now: datetime) -> float | None:
-        """Return the peak elevation of the pass in progress, whose culmination happened before now."""
+    @staticmethod
+    def _pass_set_time(times, events) -> datetime | None:
+        """Return the time of the first "Set" among the events, which ends the pass they belong to, or None."""
+        for ti, event in zip(times, events):
+            if event == 2:
+                return ti.utc_datetime()
+        return None
+
+    def _started_pass(self, now: datetime) -> tuple[datetime | None, float | None]:
+        """Return (rise time, peak elevation) of the pass in progress; either is None if it is not found.
+
+        The peak is only known here once the satellite is past its highest point.
+        """
         times, events = self.satellite.find_events(
             self.home_observer,
             self.ts.from_datetime(now - PASS_PEAK_LOOKBACK),
             self.ts.from_datetime(now),
             altitude_degrees=PASS_MIN_ELEVATION_DEGREES,
         )
+        rise = None
+        peak = None
         for ti, event in reversed(list(zip(times, events))):
-            if event == 1:
-                return self._culmination_altitude(ti)
-            if event == 2:
-                # A set between that culmination and now means it was an earlier pass
+            if event == 0:
+                rise = ti.utc_datetime()
                 break
-        return None
+            if event == 1 and peak is None:
+                peak = self._culmination_altitude(ti)
+            elif event == 2:
+                # A set between those events and now means they belong to an earlier pass
+                break
+        return rise, peak
 
     def _record_satellite_missing(self) -> None:
         """Track a continuous "satellite not found" streak and raise a repair issue once it exceeds 24 hours."""

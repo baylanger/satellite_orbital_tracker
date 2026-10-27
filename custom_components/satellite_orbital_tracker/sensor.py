@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import DEGREE, UnitOfLength, UnitOfTime
+from homeassistant.const import DEGREE, UnitOfLength, UnitOfSpeed, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -31,10 +31,12 @@ async def async_setup_entry(
     sensors = [
         SatelliteStatusSensor(coordinator, entry),
         SatelliteAltitudeSensor(coordinator, entry),
+        SatelliteSpeedSensor(coordinator, entry),
         SatelliteMaxPassDegreesSensor(coordinator, entry),
         SatelliteNextPassTimeSensor(coordinator, entry),
         SatelliteNextPassRemainingSensor(coordinator, entry),
-
+        SatellitePassDurationSensor(coordinator, entry),
+        SatellitePassRemainingSensor(coordinator, entry),
     ]
     async_add_entities(sensors)
 
@@ -107,6 +109,7 @@ class SatelliteAltitudeSensor(SatelliteBaseSensor):
         super().__init__(coordinator, entry)
         self._attr_name = "Orbital Altitude"
         self._attr_unique_id = f"{entry.entry_id}_altitude"
+        self._attr_entity_registry_enabled_default = False  # new installs: enable it in the UI if wanted
         self._attr_native_unit_of_measurement = UnitOfLength.KILOMETERS
         self._attr_state_class = SensorStateClass.MEASUREMENT
 
@@ -119,6 +122,40 @@ class SatelliteAltitudeSensor(SatelliteBaseSensor):
             if val is not None and not (isinstance(val, float) and math.isnan(val)):
                 return val
         return None
+
+class SatelliteSpeedSensor(SatelliteBaseSensor):
+    """Representation of the orbital speed."""
+
+    def __init__(self, coordinator, entry: ConfigEntry):
+        """Initialize the orbital speed sensor entity."""
+        super().__init__(coordinator, entry)
+        self._attr_name = "Orbital Speed"
+        self._attr_unique_id = f"{entry.entry_id}_speed"
+        self._attr_entity_registry_enabled_default = False  # enable it in the UI if wanted
+        self._attr_device_class = SensorDeviceClass.SPEED
+        self._attr_native_unit_of_measurement = UnitOfSpeed.KILOMETERS_PER_HOUR
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_suggested_display_precision = 0
+
+    @property
+    @override
+    def native_value(self):
+        """Return the speed in km/h, or None if it is unknown."""
+        if self.coordinator.data:
+            val = self.coordinator.data.get("speed_km_s")
+            if val is not None and not (isinstance(val, float) and math.isnan(val)):
+                return val * 3600
+        return None
+
+    @property
+    @override
+    def extra_state_attributes(self):
+        """Return the same speed in km/s."""
+        if self.coordinator.data:
+            val = self.coordinator.data.get("speed_km_s")
+            if val is not None and not (isinstance(val, float) and math.isnan(val)):
+                return {"speed_km_s": round(val, 3)}
+        return {}
 
 class SatelliteMaxPassDegreesSensor(SatelliteBaseSensor):
     """Representation of the next pass peak sky elevation angle in degrees."""
@@ -182,3 +219,50 @@ class SatelliteNextPassRemainingSensor(SatelliteBaseSensor):
         if time_to_pass is None:
             return None
         return round(time_to_pass)
+
+class SatellitePassDurationSensor(SatelliteBaseSensor):
+    """Representation of the length of the pass in progress, or of the next pass if none is in progress."""
+
+    def __init__(self, coordinator, entry: ConfigEntry):
+        super().__init__(coordinator, entry)
+        self._attr_name = "Pass Duration"
+        self._attr_unique_id = f"{entry.entry_id}_pass_duration"
+        self._attr_device_class = SensorDeviceClass.DURATION
+        self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
+
+    @property
+    @override
+    def native_value(self):
+        """Return the pass length in seconds (rise above the minimum elevation until set), or None if unknown."""
+        if not self.coordinator.data:
+            return None
+        duration = self.coordinator.data.get("pass_duration")
+        return None if duration is None else round(duration)
+
+    @property
+    @override
+    def extra_state_attributes(self):
+        """Return when that pass starts and ends (ISO8601, UTC)."""
+        data = self.coordinator.data
+        if not data:
+            return {}
+        return {"pass_start": data.get("pass_start"), "pass_end": data.get("pass_end")}
+
+class SatellitePassRemainingSensor(SatelliteBaseSensor):
+    """Representation of the time left in the pass in progress."""
+
+    def __init__(self, coordinator, entry: ConfigEntry):
+        super().__init__(coordinator, entry)
+        self._attr_name = "Pass Time Remaining"
+        self._attr_unique_id = f"{entry.entry_id}_pass_time_remaining"
+        self._attr_device_class = SensorDeviceClass.DURATION
+        self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
+
+    @property
+    @override
+    def native_value(self):
+        """Return seconds until the satellite sets, 0 while no pass is in progress, None if the end is unknown."""
+        if not self.coordinator.data:
+            return None
+        remaining = self.coordinator.data.get("pass_time_remaining")
+        return None if remaining is None else round(remaining)

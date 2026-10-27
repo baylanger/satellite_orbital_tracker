@@ -88,7 +88,7 @@ In Home Assistant,
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | **NORAD ID** | String | *Required* | The catalog number of the satellite (e.g., `25544`), digits only. Leading zeros are ignored (`025544` is the same satellite as `25544`). Used to query CelesTrak and compute orbital paths. |
-| **Update Interval** | Number | `120` | How often (in seconds) the sensor data and coordinates refresh (bounded between 5 and 3600 seconds). |
+| **Update Interval** | Number | `120` | How often (in seconds) the sensor data and coordinates refresh (bounded between 5 and 3600 seconds). While a satellite is above 10° over your home (a pass in progress), it refreshes every 5 seconds instead. |
 
 5. Click **Submit**.
 
@@ -107,7 +107,7 @@ You can look up the unique NORAD Catalog Number (CATNR) for any spacecraft using
 
 ## Generated Sensors & Naming Convention
 
-Each satellite instance creates a dedicated device with five namespaced entities to prevent ID collisions when tracking multiple spacecraft:
+Each satellite instance creates a dedicated device with eight namespaced entities to prevent ID collisions when tracking multiple spacecraft:
 
 1. Status Sensor
 Entity ID Pattern: `sensor.satellite_[name]_status` (e.g., `sensor.satellite_iss_zarya_status`)
@@ -128,6 +128,7 @@ Attributes:
 2. Orbital Altitude Sensor
 Entity ID Pattern: `sensor.satellite_[name]_orbital_altitude`
 State: Physical orbital height above the Earth's geoid.
+Disabled by default on new installs (it changes with every update): enable it under Settings > Devices & services > the satellite's device. Existing installs keep it enabled.
 Unit of Measurement: km
 State Class: measurement
 
@@ -144,9 +145,35 @@ Device Class: timestamp
 
 5. Next Pass Time Remaining Sensor
 Entity ID Pattern: `sensor.satellite_[name]_next_pass_time_remaining`
-State: Seconds until the next upcoming pass, handy for automations that prepare for a pass.
+State: Seconds until the next upcoming pass event, handy for automations that prepare for a pass.
 Unit of Measurement: s
 Device Class: duration
+State Class: measurement
+
+6. Pass Duration Sensor
+Entity ID Pattern: `sensor.satellite_[name]_pass_duration`
+State: Length in seconds of the pass in progress (from its rise above 10° until its set), or of the next pass if none is in progress. Unknown if the pass has no known end.
+Attributes:
+  - `pass_start`, `pass_end` : ISO8601 timestamps (UTC) of that pass's rise and set
+Unit of Measurement: s
+Device Class: duration
+
+7. Pass Time Remaining Sensor
+Entity ID Pattern: `sensor.satellite_[name]_pass_time_remaining`
+State: Seconds left until the satellite sets, while it is overhead (`Overhead Now!`). `0` when no pass is in progress. Unknown in the rare case that a pass is under way but its end is not known.
+Unit of Measurement: s
+Device Class: duration
+
+Not to be confused with *Next Pass Time Remaining*, which counts down to the next rise, peak or set. While a pass is in progress both are refreshed every 5 seconds (the update that detects the rise is timed to it, so the pass is picked up when it starts, not up to one polling interval later). Outside a pass they follow your polling interval (default 120 s). Pass Time Remaining changes every 5 seconds during a pass, so exclude it from the recorder if you don't want that history. Status (with its position attributes) also changes every update; Orbital Altitude and Orbital Speed do too, but they are disabled by default.
+
+8. Orbital Speed Sensor
+Entity ID Pattern: `sensor.satellite_[name]_orbital_speed`
+State: How fast the satellite is moving along its orbit, taken from the velocity of the orbital model (about 27,600 km/h for the ISS), measured relative to the centre of the Earth. It is not the speed of the point on the ground below the satellite, which is lower because the Earth turns underneath. Home Assistant shows it in mph if your unit system is imperial.
+Disabled by default (for the ISS it stays within a few km/h of the same value): enable it under Settings > Devices & services > the satellite's device.
+Attributes:
+  - `speed_km_s` : The same speed in km/s
+Unit of Measurement: km/h
+Device Class: speed
 State Class: measurement
 
 ---
