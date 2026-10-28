@@ -144,5 +144,6 @@ async def test_update_interval_change_reloads_without_downloading(hass: HomeAssi
         await hass.async_block_till_done()
 
         assert built.count == 2
-        assert hass.data[DOMAIN][entry.entry_id].update_interval == timedelta(seconds=300)
+        # update_interval itself is shortened around a pass, so compare the configured one
+        assert hass.data[DOMAIN][entry.entry_id].configured_update_interval == timedelta(seconds=300)
         assert _celestrak_requests(m) == 1

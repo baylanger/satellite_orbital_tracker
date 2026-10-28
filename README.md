@@ -49,7 +49,7 @@ Contributions, bug reports, and suggestions are always welcome! If you have an i
 
 The integration includes built-in resilience for tracking satellite data from CelesTrak:
 - **Transient Error Backoff:** If CelesTrak returns temporary server errors (5xx), rate limits you (403) or any other non-200 response, the coordinator backs off and retries on an accelerated 1-hour schedule rather than waiting for the standard 12-hour sync window. These responses are never treated as a missing satellite.
-- **Lost Satellite Detection (24-Hour Grace Period):** If CelesTrak returns a continuous `404 Not Found`, or an HTTP 200 without any TLE data, for over 24 hours (indicating a decayed or decommissioned satellite), Home Assistant will automatically trigger a **Repair Issue** notification.
+- **Lost Satellite Detection (24-Hour Grace Period):** If CelesTrak returns a continuous `404 Not Found`, or an HTTP 200 without any TLE data, for over 24 hours (indicating a decayed or decommissioned satellite), Home Assistant will automatically trigger a **Repair Issue** notification. The start of the outage is saved, so restarting Home Assistant during the outage does not restart the 24-hour count.
 - **Automatic Recovery:** If the satellite shows back up in the CelesTrak database and returns a valid TLE (HTTP 200) after a 404 repair was raised, the integration automatically clears the repair issue and resets its internal tracking.
 - **No Frozen Positions:** If the orbital calculation fails 5 times in a row, the sensors become unavailable instead of continuing to show the last known position.
 
