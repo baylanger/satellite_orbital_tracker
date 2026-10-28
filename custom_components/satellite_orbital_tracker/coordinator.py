@@ -116,6 +116,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             if self.satellite is None:
                 stored_data = await self.store.async_load()
                 if stored_data:
+                    self._restore_missing_streak(stored_data)
                     try:
                         line1 = stored_data.get("line1")
                         line2 = stored_data.get("line2")
@@ -457,12 +458,27 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                 break
         return rise, peak
 
-    def _record_satellite_missing(self) -> None:
+    def _restore_missing_streak(self, stored_data: dict) -> None:
+        """Continue a "satellite not found" streak that started before a restart, so the 24 hours are not restarted."""
+        try:
+            since = datetime.fromisoformat(stored_data["missing_since"])
+        except (KeyError, TypeError, ValueError):
+            return
+        if since.tzinfo is None:
+            since = since.replace(tzinfo=timezone.utc)
+        # A start time in the future (clock moved back) is ignored, as for the TLE timestamp
+        if self.first_404_timestamp is None and since <= datetime.now(timezone.utc):
+            self.first_404_timestamp = since
+
+    async def _async_record_satellite_missing(self) -> None:
         """Track a continuous "satellite not found" streak and raise a repair issue once it exceeds 24 hours."""
         now = datetime.now(timezone.utc)
-        # Track when the continuous 404 missing satellite outage started
+        # Track when the continuous 404 missing satellite outage started. The start is saved next to the TLE
+        # cache, so a restart during the outage does not begin a new 24-hour count.
         if self.first_404_timestamp is None:
             self.first_404_timestamp = now
+            stored = await self.store.async_load() or {}
+            await self.store.async_save({**stored, "missing_since": now.isoformat()})
 
         # Trigger a Home Assistant repair issue if the satellite remains missing beyond 24 hours
         if (now - self.first_404_timestamp) >= LOST_SATELLITE_WINDOW:  # pragma: no cover
@@ -489,7 +505,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
 
                 if status_code != 200:
                     if status_code == 404:
-                        self._record_satellite_missing()
+                        await self._async_record_satellite_missing()
                         return False, status_code
 
                     # Any other non-200 status (403 rate limiting, 5xx outage, ...) is simply a failed fetch.
@@ -518,7 +534,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                     # decayed catalog number). Count it like a 404 so a satellite that stays missing for 24 hours
                     # raises the repair issue, and report it as a 404 so the caller uses the shorter retry interval.
                     _LOGGER.debug("CelesTrak returned HTTP 200 without TLE data for %s", self.satellite_name)
-                    self._record_satellite_missing()
+                    await self._async_record_satellite_missing()
                     return False, 404
 
                 if not line1 or not line2:
