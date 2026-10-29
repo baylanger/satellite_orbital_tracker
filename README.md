@@ -110,7 +110,7 @@ You can look up the unique NORAD Catalog Number (CATNR) for any spacecraft using
 
 ## Generated Sensors & Naming Convention
 
-Each satellite instance creates a dedicated device with eleven namespaced entities to prevent ID collisions when tracking multiple spacecraft:
+Each satellite instance creates a dedicated device with twelve namespaced entities to prevent ID collisions when tracking multiple spacecraft:
 
 1. Status Sensor
 Entity ID Pattern: `sensor.satellite_[name]_status` (e.g., `sensor.satellite_iss_zarya_status`)
@@ -194,7 +194,16 @@ Entity ID Pattern: `sensor.satellite_[name]_next_satellite_sunset`
 State: The next time the satellite enters the Earth's shadow. Unknown if there is none in the next 24 hours (the ISS has periods of several days when it stays in the sunlight).
 Device Class: timestamp
 
-The three sunlight entities (9 to 11) are **disabled by default**. Enable the ones you want under Settings > Devices & services > the satellite's device. The Sun's direction is computed inside the integration, so nothing is downloaded. The Earth's shadow is treated as a sharp-edged cylinder, so the times are good to a few seconds. They do not depend on where you are: "sunrise" here is the satellite's own, not yours.
+12. Visible Now Binary Sensor
+Entity ID Pattern: `binary_sensor.satellite_[name]_visible_now`
+State: `on` while all three are true: the satellite is above 10° over your home (a pass in progress), the Sun shines on it (Sunlit), and the sky at your home location is dark, meaning the Sun is 6° or more below your horizon (the end of civil twilight; the exact limit counts as dark). Unknown if one of these can't be worked out.
+Attributes:
+  - `sun_elevation_at_home` : The Sun's height above your horizon, in degrees (negative at night)
+  - `dark_below_sun_elevation` : The limit used, -6°
+  - `satellite_sunlit`, `status` : The other two things the answer depends on
+The Sun's elevation at your home is computed inside the integration from the Home Assistant home location. It is not read from Home Assistant's own Sun integration, which gives sunrise and sunset for today only and not the Sun's height at the time of a future pass.
+
+Visible Now (12) is enabled when a satellite is added. The other sunlight and visibility entities (9 to 11) are **disabled by default**. Enable the ones you want under Settings > Devices & services > the satellite's device. The Sun's direction is computed inside the integration, so nothing is downloaded. The Earth's shadow is treated as a sharp-edged cylinder, so the times are good to a few seconds. They do not depend on where you are: "sunrise" here is the satellite's own, not yours.
 
 ---
 

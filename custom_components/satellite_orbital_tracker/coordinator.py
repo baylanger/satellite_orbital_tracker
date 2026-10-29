@@ -25,20 +25,21 @@ from .sun import is_sunlit, sun_direction
 _LOGGER = logging.getLogger(__name__)
 
 # TLE polling, retry intervals, and crew fetch frequency constants
-TLE_FETCH_INTERVAL = timedelta(hours=12)       # Normal interval between successful fetches
-TLE_RETRY_INTERVAL = timedelta(hours=1)        # Shorter retry interval if the last fetch failed
-LOST_SATELLITE_WINDOW = timedelta(hours=24)    # Duration of continuous 404s before raising a repair issue
-MAX_CONSECUTIVE_CALC_FAILURES = 5              # Calculation errors in a row before entities go unavailable
-CREW_FETCH_INTERVAL = timedelta(hours=24)      # Only scrape NASA crew manifest once a day
-CREW_RETRY_INTERVAL = timedelta(hours=24)      # Retry interval after a failed or empty crew scrape
-NO_PASS_RECHECK_INTERVAL = timedelta(hours=1)  # How often to search again when no pass was found in the window
-PASS_MIN_ELEVATION_DEGREES = 10.0              # Elevation above the horizon at which a pass counts as visible
-PASS_PEAK_LOOKBACK = timedelta(hours=2)        # How far back to look for the start and peak of a pass already under way
-PASS_SEARCH_MARGIN = timedelta(minutes=30)     # Search this far past 48h, so a pass starting near the end still gets its Set time
+TLE_FETCH_INTERVAL = timedelta(hours=12)         # Normal interval between successful fetches
+TLE_RETRY_INTERVAL = timedelta(hours=1)          # Shorter retry interval if the last fetch failed
+LOST_SATELLITE_WINDOW = timedelta(hours=24)      # Duration of continuous 404s before raising a repair issue
+MAX_CONSECUTIVE_CALC_FAILURES = 5                # Calculation errors in a row before entities go unavailable
+CREW_FETCH_INTERVAL = timedelta(hours=24)        # Only scrape NASA crew manifest once a day
+CREW_RETRY_INTERVAL = timedelta(hours=24)        # Retry interval after a failed or empty crew scrape
+NO_PASS_RECHECK_INTERVAL = timedelta(hours=1)    # How often to search again when no pass was found in the window
+PASS_MIN_ELEVATION_DEGREES = 10.0                # Elevation above the horizon at which a pass counts as visible
+PASS_PEAK_LOOKBACK = timedelta(hours=2)          # How far back to look for the start and peak of a pass already under way
+PASS_SEARCH_MARGIN = timedelta(minutes=30)       # Search this far past 48h, so a pass starting near the end still gets its Set time
+DARK_SUN_ELEVATION_DEGREES = -6.0                # The sky at home counts as dark when the Sun is at or below this (end of civil twilight)
 SHADOW_SEARCH_WINDOW = timedelta(hours=24)       # How far ahead to look for the satellite entering or leaving the Earth's shadow
-SHADOW_SEARCH_STEP_SECONDS = 30                # Sampling step of that search (a shadow crossing lasts far longer)
+SHADOW_SEARCH_STEP_SECONDS = 30                  # Sampling step of that search (a shadow crossing lasts far longer)
 NO_SHADOW_RECHECK_INTERVAL = timedelta(hours=1)  # How often to search again when a crossing was not found in the window
-PASS_UPDATE_INTERVAL = timedelta(seconds=5)    # Refresh this often while a pass is in progress (5 s is also the shortest interval the setup form allows)
+PASS_UPDATE_INTERVAL = timedelta(seconds=5)      # Refresh this often while a pass is in progress (5 s is also the shortest interval the setup form allows)
 
 class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
     """Data update coordinator for tracking a specific satellite."""
@@ -198,6 +199,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             next_pass = await self._async_get_next_pass(now)
             sunlit = self._current_sunlit(t, geocentric)
             shadow = await self._async_get_shadow_events(now)
+            home_sun_elevation = self._home_sun_elevation(t)
             current_altitude = self._calculate_current_altitude(t)
 
             # Determine tracker status string based on the current sky position and upcoming pass proximity
@@ -235,6 +237,8 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                 "altitude_km": elevation,
                 "speed_km_s": speed_km_s,
                 "sunlit": sunlit,
+                "home_sun_elevation": home_sun_elevation,
+                "visible_now": self._visible_now(current_altitude, sunlit, home_sun_elevation),
                 "next_sunrise": shadow["sunrise"],
                 "next_sunset": shadow["sunset"],
                 "timestamp": now,
@@ -382,6 +386,29 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         except Exception as err:
             _LOGGER.debug("Could not compute whether the satellite is sunlit: %s", err)
             return None
+
+    def _home_sun_elevation(self, t) -> float | None:
+        """Return the Sun's elevation above the horizon at the home location, in degrees (no refraction)."""
+        try:
+            local = self.home_observer.rotation_at(t) @ sun_direction(t.tt)[:, 0]  # last component: towards the zenith
+            return float(math.degrees(math.asin(float(np.clip(local[2], -1.0, 1.0)))))
+        except Exception as err:
+            _LOGGER.debug("Could not compute the Sun's elevation at home: %s", err)
+            return None
+
+    @staticmethod
+    def _visible_now(current_altitude: float | None, sunlit: bool | None, home_sun_elevation: float | None) -> bool | None:
+        """Return whether the satellite can be seen now: in a pass, in the Sun, over a dark sky at home.
+
+        None when one of the three is unknown.
+        """
+        if current_altitude is None or sunlit is None or home_sun_elevation is None:
+            return None
+        return (
+            current_altitude >= PASS_MIN_ELEVATION_DEGREES
+            and sunlit
+            and home_sun_elevation <= DARK_SUN_ELEVATION_DEGREES
+        )
 
     async def _async_get_shadow_events(self, now: datetime) -> dict:
         """Return when the satellite next leaves ("sunrise") and enters ("sunset") the Earth's shadow.
