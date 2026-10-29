@@ -37,14 +37,16 @@ async def async_setup_entry(
         SatelliteNextPassRemainingSensor(coordinator, entry),
         SatellitePassDurationSensor(coordinator, entry),
         SatellitePassRemainingSensor(coordinator, entry),
+        SatelliteSunriseSensor(coordinator, entry),
+        SatelliteSunsetSensor(coordinator, entry),
     ]
     async_add_entities(sensors)
 
-class SatelliteBaseSensor(CoordinatorEntity, SensorEntity):
-    """Base class for satellite tracker sensors providing common device info and entity naming."""
+class SatelliteBaseEntity(CoordinatorEntity):
+    """Base class for all satellite tracker entities providing common device info and entity naming."""
 
     def __init__(self, coordinator, entry: ConfigEntry):
-        """Initialize the base sensor entity."""
+        """Initialize the base entity."""
         super().__init__(coordinator)
         self.entry = entry
         self._attr_has_entity_name = True
@@ -57,6 +59,9 @@ class SatelliteBaseSensor(CoordinatorEntity, SensorEntity):
             "manufacturer": "CelesTrak GP Data",
             "model": f"NORAD ID: {entry.data['norad_id']}",
         }
+
+class SatelliteBaseSensor(SatelliteBaseEntity, SensorEntity):
+    """Base class for satellite tracker sensors."""
 
 class SatelliteStatusSensor(SatelliteBaseSensor):
     """Representation of the main mission tracking status and telemetry attributes."""
@@ -266,3 +271,44 @@ class SatellitePassRemainingSensor(SatelliteBaseSensor):
             return None
         remaining = self.coordinator.data.get("pass_time_remaining")
         return None if remaining is None else round(remaining)
+
+
+class SatelliteShadowTimeSensor(SatelliteBaseSensor):
+    """Base class for the times the satellite leaves or enters the Earth's shadow. Disabled until enabled in the UI."""
+
+    _data_key = ""
+
+    def __init__(self, coordinator, entry: ConfigEntry):
+        super().__init__(coordinator, entry)
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        self._attr_entity_registry_enabled_default = False
+
+    @property
+    @override
+    def native_value(self):
+        """Return the time as a timezone-aware datetime (UTC), or None if none was found in the next 24 hours."""
+        if self.coordinator.data:
+            val = self.coordinator.data.get(self._data_key)
+            if val:
+                return datetime.fromisoformat(val)
+        return None
+
+class SatelliteSunriseSensor(SatelliteShadowTimeSensor):
+    """Representation of the next time the Sun starts to shine on the satellite."""
+
+    _data_key = "next_sunrise"
+
+    def __init__(self, coordinator, entry: ConfigEntry):
+        super().__init__(coordinator, entry)
+        self._attr_name = "Next Satellite Sunrise"
+        self._attr_unique_id = f"{entry.entry_id}_next_sunrise"
+
+class SatelliteSunsetSensor(SatelliteShadowTimeSensor):
+    """Representation of the next time the satellite enters the Earth's shadow."""
+
+    _data_key = "next_sunset"
+
+    def __init__(self, coordinator, entry: ConfigEntry):
+        super().__init__(coordinator, entry)
+        self._attr_name = "Next Satellite Sunset"
+        self._attr_unique_id = f"{entry.entry_id}_next_sunset"
