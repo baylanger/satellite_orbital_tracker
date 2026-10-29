@@ -615,7 +615,15 @@ async def test_coordinator_tle_cache_parse_exception(hass: HomeAssistant) -> Non
         assert data["latitude"] is not None
 
 async def test_coordinator_dynamic_title_update(hass: HomeAssistant) -> None:
-    """Test that coordinator updates the config entry title if the satellite name changes."""
+    """Test that coordinator updates the config entry title if CelesTrak renames a satellite the integration named."""
+    # The name saved from the previous download is the one the integration chose, so the title may follow it
+    store = Store(hass, 1, f"{DOMAIN}_{TEST_NORAD_ID}")
+    await store.async_save({
+        "line1": TEST_TLE_LINE1,
+        "line2": TEST_TLE_LINE2,
+        "name": "Old Name",
+        "timestamp": (dt_util.utcnow() - timedelta(hours=13)).isoformat(),
+    })
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         title="Old Name",
