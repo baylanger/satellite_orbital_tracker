@@ -555,12 +555,14 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                     "timestamp": self.last_tle_fetch.isoformat(),
                 })
 
-                # Update the config entry title if CelesTrak reports a new official name. Only the title is
-                # changed, and only when it differs, so the entry is not needlessly saved or reloaded.
+                # Follow CelesTrak when it renames the satellite, but only while the title is still one the integration
+                # chose (the placeholder, or the name seen last time). A title the user typed is never overwritten.
                 if parsed_name != self.satellite_name:
+                    previous_name = self.satellite_name
                     self.satellite_name = parsed_name
                     hass_entry = self.hass.config_entries.async_get_entry(self.entry.entry_id)
-                    if hass_entry and hass_entry.title != parsed_name:
+                    automatic_titles = {previous_name, f"Satellite {self.satellite_id}"}
+                    if hass_entry and hass_entry.title in automatic_titles and hass_entry.title != parsed_name:
                         self.hass.config_entries.async_update_entry(hass_entry, title=parsed_name)
 
                 return True, status_code
