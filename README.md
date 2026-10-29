@@ -110,7 +110,7 @@ You can look up the unique NORAD Catalog Number (CATNR) for any spacecraft using
 
 ## Generated Sensors & Naming Convention
 
-Each satellite instance creates a dedicated device with eight namespaced entities to prevent ID collisions when tracking multiple spacecraft:
+Each satellite instance creates a dedicated device with eleven namespaced entities to prevent ID collisions when tracking multiple spacecraft:
 
 1. Status Sensor
 Entity ID Pattern: `sensor.satellite_[name]_status` (e.g., `sensor.satellite_iss_zarya_status`)
@@ -178,6 +178,23 @@ Attributes:
 Unit of Measurement: km/h
 Device Class: speed
 State Class: measurement
+
+9. Sunlit Binary Sensor
+Entity ID Pattern: `binary_sensor.satellite_[name]_sunlit`
+State: `on` while the Sun shines on the satellite, `off` while it is in the Earth's shadow. A satellite is much easier to see from the ground when it is sunlit and the sky above you is dark.
+Device Class: light
+
+10. Next Satellite Sunrise Sensor
+Entity ID Pattern: `sensor.satellite_[name]_next_satellite_sunrise`
+State: The next time the satellite comes out of the Earth's shadow and the Sun starts to shine on it (a timestamp, displayed in your Home Assistant time zone). Unknown if there is none in the next 24 hours.
+Device Class: timestamp
+
+11. Next Satellite Sunset Sensor
+Entity ID Pattern: `sensor.satellite_[name]_next_satellite_sunset`
+State: The next time the satellite enters the Earth's shadow. Unknown if there is none in the next 24 hours (the ISS has periods of several days when it stays in the sunlight).
+Device Class: timestamp
+
+The three sunlight entities (9 to 11) are **disabled by default**. Enable the ones you want under Settings > Devices & services > the satellite's device. The Sun's direction is computed inside the integration, so nothing is downloaded. The Earth's shadow is treated as a sharp-edged cylinder, so the times are good to a few seconds. They do not depend on where you are: "sunrise" here is the satellite's own, not yours.
 
 ---
 

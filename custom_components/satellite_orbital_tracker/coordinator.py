@@ -7,6 +7,7 @@ import math
 from typing import override
 
 from bs4 import BeautifulSoup
+import numpy as np
 import re
 
 from skyfield.api import EarthSatellite, wgs84
@@ -19,6 +20,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DOMAIN, normalize_norad_id
+from .sun import is_sunlit, sun_direction
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,6 +35,9 @@ NO_PASS_RECHECK_INTERVAL = timedelta(hours=1)  # How often to search again when 
 PASS_MIN_ELEVATION_DEGREES = 10.0              # Elevation above the horizon at which a pass counts as visible
 PASS_PEAK_LOOKBACK = timedelta(hours=2)        # How far back to look for the start and peak of a pass already under way
 PASS_SEARCH_MARGIN = timedelta(minutes=30)     # Search this far past 48h, so a pass starting near the end still gets its Set time
+SHADOW_SEARCH_WINDOW = timedelta(hours=24)       # How far ahead to look for the satellite entering or leaving the Earth's shadow
+SHADOW_SEARCH_STEP_SECONDS = 30                # Sampling step of that search (a shadow crossing lasts far longer)
+NO_SHADOW_RECHECK_INTERVAL = timedelta(hours=1)  # How often to search again when a crossing was not found in the window
 PASS_UPDATE_INTERVAL = timedelta(seconds=5)    # Refresh this often while a pass is in progress (5 s is also the shortest interval the setup form allows)
 
 class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
@@ -80,6 +85,9 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         self._next_pass_cache: dict | None = None   # Last next-pass search result
         self._next_pass_cache_key = None            # Satellite object the cached result was computed for
         self._next_pass_cache_time: datetime | None = None  # When the cached result was computed
+        self._shadow_cache: dict | None = None      # Last search for the satellite entering/leaving the Earth's shadow
+        self._shadow_cache_key = None               # Satellite object that result was computed for
+        self._shadow_cache_time: datetime | None = None  # When that result was computed
 
         # Set up Home Assistant instance geographic coordinates as default observer for pass calculations
         self.home_observer = wgs84.latlon(
@@ -188,6 +196,8 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             speed_km_s = math.sqrt(sum(float(c) ** 2 for c in geocentric.velocity.km_per_s))
 
             next_pass = await self._async_get_next_pass(now)
+            sunlit = self._current_sunlit(t, geocentric)
+            shadow = await self._async_get_shadow_events(now)
             current_altitude = self._calculate_current_altitude(t)
 
             # Determine tracker status string based on the current sky position and upcoming pass proximity
@@ -224,6 +234,9 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                 "longitude": lon,
                 "altitude_km": elevation,
                 "speed_km_s": speed_km_s,
+                "sunlit": sunlit,
+                "next_sunrise": shadow["sunrise"],
+                "next_sunset": shadow["sunset"],
                 "timestamp": now,
                 "status": state_val,
                 "next_pass_time": next_pass.get("time"),
@@ -361,6 +374,69 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         self._next_pass_cache_key = self.satellite
         self._next_pass_cache_time = now
         return result
+
+    def _current_sunlit(self, t, geocentric) -> bool | None:
+        """Return whether the Sun shines on the satellite now, or None if that could not be worked out."""
+        try:
+            return bool(is_sunlit(geocentric.position.km.reshape(3, 1), sun_direction(t.tt))[0])
+        except Exception as err:
+            _LOGGER.debug("Could not compute whether the satellite is sunlit: %s", err)
+            return None
+
+    async def _async_get_shadow_events(self, now: datetime) -> dict:
+        """Return when the satellite next leaves ("sunrise") and enters ("sunset") the Earth's shadow.
+
+        The search runs in the executor and its result is reused until one of the two times has passed, the
+        TLE changed, or (when a time was not found in the window) an hour has elapsed.
+        """
+        cached = self._shadow_cache
+        if cached is not None and self._shadow_cache_key is self.satellite:
+            times = [datetime.fromisoformat(value) for value in (cached["sunrise"], cached["sunset"]) if value]
+            if all(time > now for time in times):
+                complete = len(times) == 2
+                if complete or (self._shadow_cache_time and now - self._shadow_cache_time < NO_SHADOW_RECHECK_INTERVAL):
+                    return cached
+
+        result = await self.hass.async_add_executor_job(self._calculate_shadow_events, now)
+        self._shadow_cache = result
+        self._shadow_cache_key = self.satellite
+        self._shadow_cache_time = now
+        return result
+
+    def _sunlit_at(self, jd_tt: np.ndarray) -> np.ndarray:
+        """Return, for Julian dates (TT), whether the Sun shines on the satellite at each of them."""
+        positions = self.satellite.at(self.ts.tt_jd(jd_tt)).position.km
+        return is_sunlit(positions, sun_direction(jd_tt))
+
+    def _calculate_shadow_events(self, now: datetime) -> dict:
+        """Find the first times, within SHADOW_SEARCH_WINDOW, that the satellite leaves and enters the shadow."""
+        result = {"sunrise": None, "sunset": None}
+        try:
+            start_jd = self.ts.from_datetime(now).tt
+            steps = int(SHADOW_SEARCH_WINDOW.total_seconds() // SHADOW_SEARCH_STEP_SECONDS)
+            step_days = SHADOW_SEARCH_STEP_SECONDS / 86400
+            jds = start_jd + step_days * np.arange(steps + 1)
+            lit = self._sunlit_at(jds)
+
+            for i in np.nonzero(lit[1:] != lit[:-1])[0]:
+                key = "sunrise" if lit[i + 1] else "sunset"
+                if result[key] is None:
+                    result[key] = self._refine_shadow_crossing(jds[i], jds[i + 1], bool(lit[i + 1])).isoformat()
+                if None not in result.values():
+                    break
+        except Exception as err:
+            _LOGGER.debug("Could not compute when the satellite enters or leaves the shadow: %s", err)
+        return result
+
+    def _refine_shadow_crossing(self, jd_before: float, jd_after: float, lit_after: bool) -> datetime:
+        """Narrow a crossing between two sample times down to a fraction of a second, by bisection."""
+        for _ in range(12):  # 30 s / 2**12 is far below a second
+            middle = (jd_before + jd_after) / 2
+            if bool(self._sunlit_at(np.array([middle]))[0]) == lit_after:
+                jd_after = middle
+            else:
+                jd_before = middle
+        return self.ts.tt_jd(jd_after).utc_datetime()
 
     def _calculate_current_altitude(self, t) -> float | None:
         """Return the satellite's current elevation above the home observer's horizon, in degrees."""
