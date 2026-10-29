@@ -3,9 +3,11 @@ from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.storage import Store
 from skyfield.api import load
 
-from .const import DOMAIN
+from .const import DOMAIN, normalize_norad_id
 from .coordinator import SatelliteDataUpdateCoordinator
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -38,3 +40,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN].pop(entry.entry_id)
 
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Delete the saved TLE cache and any repair issue once a satellite is removed from Home Assistant."""
+    # Entries created before NORAD IDs were normalized may have saved their cache under the raw ID
+    norad_ids = {str(entry.data["norad_id"]), normalize_norad_id(entry.data["norad_id"]) or str(entry.data["norad_id"])}
+    for norad_id in norad_ids:
+        await Store(hass, 1, f"{DOMAIN}_{norad_id}").async_remove()
+        ir.async_delete_issue(hass, DOMAIN, f"satellite_lost_{norad_id}")
