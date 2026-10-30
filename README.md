@@ -110,9 +110,27 @@ You can look up the unique NORAD Catalog Number (CATNR) for any spacecraft using
 
 ## Generated Sensors & Naming Convention
 
-Each satellite instance creates a dedicated device with thirteen namespaced entities to prevent ID collisions when tracking multiple spacecraft:
+Each satellite instance creates a dedicated device with thirteen namespaced entities to prevent ID collisions when tracking multiple spacecraft.
 
-1. Status Sensor
+| Entity | What it shows | Default |
+| :--- | :--- | :--- |
+| 1. [Status](#1-status-sensor) | `In Orbit`, `Approaching (...)` or `Overhead Now!`, with the position, TLE and ISS crew as attributes | Enabled |
+| 2. [Orbital Altitude](#2-orbital-altitude-sensor) | Height above the Earth (km) | Disabled on new installs |
+| 3. [Next Pass Max Elevation](#3-next-pass-max-elevation-sensor) | Highest point of the next pass, or of the pass in progress (°) | Enabled |
+| 4. [Next Pass Time](#4-next-pass-time-sensor) | Time of the next pass event: the rise, or the peak or set during a pass | Enabled |
+| 5. [Next Pass Time Remaining](#5-next-pass-time-remaining-sensor) | Seconds until that event | Enabled |
+| 6. [Pass Duration](#6-pass-duration-sensor) | Length of the pass in progress, or of the next pass (s) | Enabled |
+| 7. [Pass Time Remaining](#7-pass-time-remaining-sensor) | Seconds until the pass in progress ends; `0` outside a pass | Enabled |
+| 8. [Orbital Speed](#8-orbital-speed-sensor) | Speed along the orbit (km/h) | Disabled |
+| 9. [Visible Now](#9-visible-now-binary-sensor) (binary) | `on` while the satellite is up, sunlit, and your sky is dark | Enabled |
+| 10. [Sunlit](#10-sunlit-binary-sensor) (binary) | `on` while the Sun shines on the satellite | Disabled |
+| 11. [Next Satellite Sunrise](#11-next-satellite-sunrise-sensor) | When the satellite next comes out of the Earth's shadow | Disabled |
+| 12. [Next Satellite Sunset](#12-next-satellite-sunset-sensor) | When the satellite next enters the Earth's shadow | Disabled |
+| 13. [Next Visible Pass](#13-next-visible-pass-sensor) | When the satellite next becomes visible from home, and where to look | Disabled |
+
+Enable a disabled entity under Settings > Devices & services > the satellite's device. Each entity is described below.
+
+### 1. Status Sensor
 Entity ID Pattern: `sensor.satellite_[name]_status` (e.g., `sensor.satellite_iss_zarya_status`)
 State: Current operational tracking state:
   - `Overhead Now!`: The satellite is currently above 10° elevation from your home coordinates (from its rise until its set).
@@ -128,32 +146,32 @@ Attributes:
   - `tle_last_fetched` : ISO8601 timestamp of when those orbital elements were last downloaded from CelesTrak
   - `source` : Tracking engine identifier (Local SGP4 Engine)
 
-2. Orbital Altitude Sensor
+### 2. Orbital Altitude Sensor
 Entity ID Pattern: `sensor.satellite_[name]_orbital_altitude`
 State: Physical orbital height above the Earth's geoid.
 Disabled by default on new installs (it changes with every update): enable it under Settings > Devices & services > the satellite's device. Existing installs keep it enabled.
 Unit of Measurement: km
 State Class: measurement
 
-3. Next Pass Max Elevation Sensor
+### 3. Next Pass Max Elevation Sensor
 Entity ID Pattern: `sensor.satellite_[name]_next_pass_max_elevation`
 State: Peak sky elevation angle for the next upcoming overhead pass. While a pass is in progress, it shows the peak of that pass until the satellite sets.
 Unit of Measurement: °
 State Class: measurement
 
-4. Next Pass Time Sensor
+### 4. Next Pass Time Sensor
 Entity ID Pattern: `sensor.satellite_[name]_next_pass_time`
 State: Date and time of the next upcoming pass over your home coordinates (a timestamp, displayed in your Home Assistant time zone).
 Device Class: timestamp
 
-5. Next Pass Time Remaining Sensor
+### 5. Next Pass Time Remaining Sensor
 Entity ID Pattern: `sensor.satellite_[name]_next_pass_time_remaining`
 State: Seconds until the next upcoming pass event, handy for automations that prepare for a pass.
 Unit of Measurement: s
 Device Class: duration
 State Class: measurement
 
-6. Pass Duration Sensor
+### 6. Pass Duration Sensor
 Entity ID Pattern: `sensor.satellite_[name]_pass_duration`
 State: Length in seconds of the pass in progress (from its rise above 10° until its set), or of the next pass if none is in progress. Unknown if the pass has no known end.
 Attributes:
@@ -161,7 +179,7 @@ Attributes:
 Unit of Measurement: s
 Device Class: duration
 
-7. Pass Time Remaining Sensor
+### 7. Pass Time Remaining Sensor
 Entity ID Pattern: `sensor.satellite_[name]_pass_time_remaining`
 State: Seconds left until the satellite sets, while it is overhead (`Overhead Now!`). `0` when no pass is in progress. Unknown in the rare case that a pass is under way but its end is not known.
 Unit of Measurement: s
@@ -169,7 +187,7 @@ Device Class: duration
 
 Not to be confused with *Next Pass Time Remaining*, which counts down to the next rise, peak or set. While a pass is in progress both are refreshed every 5 seconds (the update that detects the rise is timed to it, so the pass is picked up when it starts, not up to one polling interval later). Outside a pass they follow your polling interval (default 120 s). Pass Time Remaining changes every 5 seconds during a pass, so exclude it from the recorder if you don't want that history. Status (with its position attributes) also changes every update; Orbital Altitude and Orbital Speed do too, but they are disabled by default.
 
-8. Orbital Speed Sensor
+### 8. Orbital Speed Sensor
 Entity ID Pattern: `sensor.satellite_[name]_orbital_speed`
 State: How fast the satellite is moving along its orbit, taken from the velocity of the orbital model (about 27,600 km/h for the ISS), measured relative to the centre of the Earth. It is not the speed of the point on the ground below the satellite, which is lower because the Earth turns underneath. Home Assistant shows it in mph if your unit system is imperial.
 Disabled by default (for the ISS it stays within a few km/h of the same value): enable it under Settings > Devices & services > the satellite's device.
@@ -179,22 +197,7 @@ Unit of Measurement: km/h
 Device Class: speed
 State Class: measurement
 
-9. Sunlit Binary Sensor
-Entity ID Pattern: `binary_sensor.satellite_[name]_sunlit`
-State: `on` while the Sun shines on the satellite, `off` while it is in the Earth's shadow. A satellite is much easier to see from the ground when it is sunlit and the sky above you is dark.
-Device Class: light
-
-10. Next Satellite Sunrise Sensor
-Entity ID Pattern: `sensor.satellite_[name]_next_satellite_sunrise`
-State: The next time the satellite comes out of the Earth's shadow and the Sun starts to shine on it (a timestamp, displayed in your Home Assistant time zone). Unknown if there is none in the next 24 hours.
-Device Class: timestamp
-
-11. Next Satellite Sunset Sensor
-Entity ID Pattern: `sensor.satellite_[name]_next_satellite_sunset`
-State: The next time the satellite enters the Earth's shadow. Unknown if there is none in the next 24 hours (the ISS has periods of several days when it stays in the sunlight).
-Device Class: timestamp
-
-12. Visible Now Binary Sensor
+### 9. Visible Now Binary Sensor
 Entity ID Pattern: `binary_sensor.satellite_[name]_visible_now`
 State: `on` while all three are true: the satellite is above 10° over your home (a pass in progress), the Sun shines on it (Sunlit), and the sky at your home location is dark, meaning the Sun is 6° or more below your horizon (the end of civil twilight; the exact limit counts as dark). Unknown if one of these can't be worked out.
 Attributes:
@@ -203,7 +206,22 @@ Attributes:
   - `satellite_sunlit`, `status` : The other two things the answer depends on
 The Sun's elevation at your home is computed inside the integration from the Home Assistant home location. It is not read from Home Assistant's own Sun integration, which gives sunrise and sunset for today only and not the Sun's height at the time of a future pass.
 
-13. Next Visible Pass Sensor
+### 10. Sunlit Binary Sensor
+Entity ID Pattern: `binary_sensor.satellite_[name]_sunlit`
+State: `on` while the Sun shines on the satellite, `off` while it is in the Earth's shadow. A satellite is much easier to see from the ground when it is sunlit and the sky above you is dark.
+Device Class: light
+
+### 11. Next Satellite Sunrise Sensor
+Entity ID Pattern: `sensor.satellite_[name]_next_satellite_sunrise`
+State: The next time the satellite comes out of the Earth's shadow and the Sun starts to shine on it (a timestamp, displayed in your Home Assistant time zone). Unknown if there is none in the next 24 hours.
+Device Class: timestamp
+
+### 12. Next Satellite Sunset Sensor
+Entity ID Pattern: `sensor.satellite_[name]_next_satellite_sunset`
+State: The next time the satellite enters the Earth's shadow. Unknown if there is none in the next 24 hours (the ISS has periods of several days when it stays in the sunlight).
+Device Class: timestamp
+
+### 13. Next Visible Pass Sensor
 Entity ID Pattern: `sensor.satellite_[name]_next_visible_pass`
 State: When the next pass becomes visible from your home (a timestamp, displayed in your Home Assistant time zone): the satellite is above 10°, the Sun shines on it, and the Sun is 6° or more below your horizon, the same three conditions as Visible Now. Unknown if there is none in the next 7 days. A visible pass already under way is not shown; the sensor looks at the next one.
 Attributes:
@@ -215,7 +233,8 @@ Attributes:
   - `pass_start`, `pass_end` : The whole pass above 10°, which may be longer than the visible part
 Predictions several days ahead are estimates: they are recomputed with every new TLE download, and the closer the pass, the more exact they are. Use the state in a time trigger (with an offset to get a warning before the pass), and Visible Now to know when it is happening.
 
-Visible Now (12) is enabled when a satellite is added. The other sunlight and visibility entities (9 to 11 and 13) are **disabled by default**. Enable the ones you want under Settings > Devices & services > the satellite's device. The Sun's direction is computed inside the integration, so nothing is downloaded. The Earth's shadow is treated as a sharp-edged cylinder, so the times are good to a few seconds. They do not depend on where you are: "sunrise" here is the satellite's own, not yours.
+### About the sunlight and visibility entities (9 to 13)
+The Sun's direction is computed inside the integration, so nothing is downloaded. The Earth's shadow is treated as a sharp-edged cylinder, so the shadow times are good to a few seconds. Sunlit, Next Satellite Sunrise and Next Satellite Sunset do not depend on where you are: "sunrise" here is the satellite's own, not yours.
 
 ---
 
