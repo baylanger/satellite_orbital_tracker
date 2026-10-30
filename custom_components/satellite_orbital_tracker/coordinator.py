@@ -36,6 +36,11 @@ PASS_MIN_ELEVATION_DEGREES = 10.0                # Elevation above the horizon a
 PASS_PEAK_LOOKBACK = timedelta(hours=2)          # How far back to look for the start and peak of a pass already under way
 PASS_SEARCH_MARGIN = timedelta(minutes=30)       # Search this far past 48h, so a pass starting near the end still gets its Set time
 DARK_SUN_ELEVATION_DEGREES = -6.0                # The sky at home counts as dark when the Sun is at or below this (end of civil twilight)
+VISIBLE_SEARCH_WINDOW = timedelta(days=7)        # How far ahead to look for a visible pass (predictions get less exact with the TLE's age)
+VISIBLE_SAMPLE_SECONDS = 2                       # Sampling step within a pass when looking for the part that is visible
+VISIBLE_DAYLIGHT_MARGIN_DEGREES = 3.0            # A pass is skipped as daylight when the Sun stays this far above the darkness limit
+VISIBLE_LOOKBACK = timedelta(minutes=15)         # Start the search this far back, so a pass already under way is seen whole
+NO_VISIBLE_RECHECK_INTERVAL = timedelta(hours=1) # How often to search again when no visible pass was found in the window
 SHADOW_SEARCH_WINDOW = timedelta(hours=24)       # How far ahead to look for the satellite entering or leaving the Earth's shadow
 SHADOW_SEARCH_STEP_SECONDS = 30                  # Sampling step of that search (a shadow crossing lasts far longer)
 NO_SHADOW_RECHECK_INTERVAL = timedelta(hours=1)  # How often to search again when a crossing was not found in the window
@@ -86,6 +91,9 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         self._next_pass_cache: dict | None = None   # Last next-pass search result
         self._next_pass_cache_key = None            # Satellite object the cached result was computed for
         self._next_pass_cache_time: datetime | None = None  # When the cached result was computed
+        self._visible_cache: dict | None = None     # Last search for the next visible pass
+        self._visible_cache_key = None              # Satellite object that result was computed for
+        self._visible_cache_time: datetime | None = None  # When that result was computed
         self._shadow_cache: dict | None = None      # Last search for the satellite entering/leaving the Earth's shadow
         self._shadow_cache_key = None               # Satellite object that result was computed for
         self._shadow_cache_time: datetime | None = None  # When that result was computed
@@ -200,6 +208,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             sunlit = self._current_sunlit(t, geocentric)
             shadow = await self._async_get_shadow_events(now)
             home_sun_elevation = self._home_sun_elevation(t)
+            visible_pass = await self._async_get_next_visible_pass(now)
             current_altitude = self._calculate_current_altitude(t)
 
             # Determine tracker status string based on the current sky position and upcoming pass proximity
@@ -238,6 +247,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                 "speed_km_s": speed_km_s,
                 "sunlit": sunlit,
                 "home_sun_elevation": home_sun_elevation,
+                "next_visible_pass": visible_pass,
                 "visible_now": self._visible_now(current_altitude, sunlit, home_sun_elevation),
                 "next_sunrise": shadow["sunrise"],
                 "next_sunset": shadow["sunset"],
@@ -409,6 +419,105 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             and sunlit
             and home_sun_elevation <= DARK_SUN_ELEVATION_DEGREES
         )
+
+    async def _async_get_next_visible_pass(self, now: datetime) -> dict:
+        """Return the next visible pass, only searching again when the cached one has started or the TLE changed.
+
+        A pass is visible while the satellite is above the pass limit, the Sun shines on it, and the sky at home
+        is dark. The search covers VISIBLE_SEARCH_WINDOW and runs in the executor. When nothing was found it is
+        repeated after an hour (and whenever the TLE changes, which refines the prediction).
+        """
+        cached = self._visible_cache
+        if cached is not None and self._visible_cache_key is self.satellite:
+            if cached.get("start"):
+                if datetime.fromisoformat(cached["start"]) > now:
+                    return cached
+            elif self._visible_cache_time and now - self._visible_cache_time < NO_VISIBLE_RECHECK_INTERVAL:
+                return cached
+
+        result = await self.hass.async_add_executor_job(self._calculate_next_visible_pass, now)
+        self._visible_cache = result
+        self._visible_cache_key = self.satellite
+        self._visible_cache_time = now
+        return result
+
+    def _visible_samples(self, start: datetime, end: datetime) -> dict:
+        """Sample a pass: elevation, azimuth and whether it is visible, every VISIBLE_SAMPLE_SECONDS."""
+        count = max(int((end - start).total_seconds() // VISIBLE_SAMPLE_SECONDS) + 1, 2)
+        jds = self.ts.from_datetime(start).tt + np.arange(count) * (VISIBLE_SAMPLE_SECONDS / 86400)
+        t = self.ts.tt_jd(jds)
+        altitude, azimuth, _ = (self.satellite - self.home_observer).at(t).altaz()
+        sun = sun_direction(jds)
+        lit = is_sunlit(self.satellite.at(t).position.km, sun)
+        zenith = np.einsum("ijn,jn->in", self.home_observer.rotation_at(t), sun)[2]
+        sun_elevation = np.degrees(np.arcsin(np.clip(zenith, -1.0, 1.0)))
+        visible = (
+            (altitude.degrees >= PASS_MIN_ELEVATION_DEGREES - 0.05)  # the pass edges are exactly at the limit
+            & lit
+            & (sun_elevation <= DARK_SUN_ELEVATION_DEGREES)
+        )
+        return {"jds": jds, "altitude": altitude.degrees, "azimuth": azimuth.degrees, "visible": visible,
+                "sun_elevation": sun_elevation}
+
+    def _calculate_next_visible_pass(self, now: datetime) -> dict:
+        """Find the first visible stretch of a pass that starts after now, within VISIBLE_SEARCH_WINDOW."""
+        none = {"start": None}
+        try:
+            search_start = now - VISIBLE_LOOKBACK
+            search_end = now + VISIBLE_SEARCH_WINDOW
+            times, events = self.satellite.find_events(
+                self.home_observer,
+                self.ts.from_datetime(search_start),
+                self.ts.from_datetime(search_end),
+                altitude_degrees=PASS_MIN_ELEVATION_DEGREES,
+            )
+
+            # Passes as (rise, set); one that began before the search or is still up at its end is cut there
+            passes = []
+            rise = None
+            for ti, event in zip(times, events):
+                if event == 0:
+                    rise = ti.utc_datetime()
+                elif event == 2:
+                    passes.append((rise or search_start, ti.utc_datetime()))
+                    rise = None
+            if rise is not None:
+                passes.append((rise, search_end))
+
+            for pass_start, pass_end in passes:
+                if pass_end <= now:
+                    continue
+                # In daylight nothing can be visible. The Sun moves about a quarter of a degree a minute, so
+                # checking the pass's start, middle and end is enough to skip those cheaply.
+                checks = [pass_start, pass_start + (pass_end - pass_start) / 2, pass_end]
+                sun_elevations = [self._home_sun_elevation(self.ts.from_datetime(moment)) for moment in checks]
+                if None not in sun_elevations and min(sun_elevations) > DARK_SUN_ELEVATION_DEGREES + VISIBLE_DAYLIGHT_MARGIN_DEGREES:
+                    continue
+
+                samples = self._visible_samples(pass_start, pass_end)
+                indexes = np.nonzero(samples["visible"])[0]
+                if len(indexes) == 0:
+                    continue
+                first, last = int(indexes[0]), int(indexes[-1])
+                visible_start = self.ts.tt_jd(samples["jds"][first]).utc_datetime()
+                if visible_start <= now:
+                    continue  # already under way: the sensor is about the next one
+                visible_end = self.ts.tt_jd(samples["jds"][last]).utc_datetime()
+                peak = first + int(np.argmax(samples["altitude"][first:last + 1]))
+                return {
+                    "start": visible_start.isoformat(),
+                    "end": visible_end.isoformat(),
+                    "duration": (visible_end - visible_start).total_seconds(),
+                    "max_elevation": round(float(samples["altitude"][peak]), 1),
+                    "max_elevation_time": self.ts.tt_jd(samples["jds"][peak]).utc_datetime().isoformat(),
+                    "start_azimuth": round(float(samples["azimuth"][first]), 1),
+                    "end_azimuth": round(float(samples["azimuth"][last]), 1),
+                    "pass_start": pass_start.isoformat(),
+                    "pass_end": pass_end.isoformat(),
+                }
+        except Exception as err:
+            _LOGGER.debug("Could not compute the next visible pass: %s", err)
+        return none
 
     async def _async_get_shadow_events(self, now: datetime) -> dict:
         """Return when the satellite next leaves ("sunrise") and enters ("sunset") the Earth's shadow.

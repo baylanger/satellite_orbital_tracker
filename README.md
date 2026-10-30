@@ -110,7 +110,7 @@ You can look up the unique NORAD Catalog Number (CATNR) for any spacecraft using
 
 ## Generated Sensors & Naming Convention
 
-Each satellite instance creates a dedicated device with twelve namespaced entities to prevent ID collisions when tracking multiple spacecraft:
+Each satellite instance creates a dedicated device with thirteen namespaced entities to prevent ID collisions when tracking multiple spacecraft:
 
 1. Status Sensor
 Entity ID Pattern: `sensor.satellite_[name]_status` (e.g., `sensor.satellite_iss_zarya_status`)
@@ -203,7 +203,19 @@ Attributes:
   - `satellite_sunlit`, `status` : The other two things the answer depends on
 The Sun's elevation at your home is computed inside the integration from the Home Assistant home location. It is not read from Home Assistant's own Sun integration, which gives sunrise and sunset for today only and not the Sun's height at the time of a future pass.
 
-Visible Now (12) is enabled when a satellite is added. The other sunlight and visibility entities (9 to 11) are **disabled by default**. Enable the ones you want under Settings > Devices & services > the satellite's device. The Sun's direction is computed inside the integration, so nothing is downloaded. The Earth's shadow is treated as a sharp-edged cylinder, so the times are good to a few seconds. They do not depend on where you are: "sunrise" here is the satellite's own, not yours.
+13. Next Visible Pass Sensor
+Entity ID Pattern: `sensor.satellite_[name]_next_visible_pass`
+State: When the next pass becomes visible from your home (a timestamp, displayed in your Home Assistant time zone): the satellite is above 10°, the Sun shines on it, and the Sun is 6° or more below your horizon, the same three conditions as Visible Now. Unknown if there is none in the next 7 days. A visible pass already under way is not shown; the sensor looks at the next one.
+Attributes:
+  - `visible_end` : When it stops being visible (it sets, or enters the Earth's shadow), ISO8601 UTC
+  - `duration` : Length of the visible part, in seconds
+  - `max_elevation`, `max_elevation_time` : Highest point of the visible part and when it happens
+  - `start_azimuth`, `start_direction` : Where to look when it appears: degrees clockwise from north, and the compass point (N, NNE, NE ...)
+  - `end_azimuth`, `end_direction` : Where it disappears
+  - `pass_start`, `pass_end` : The whole pass above 10°, which may be longer than the visible part
+Predictions several days ahead are estimates: they are recomputed with every new TLE download, and the closer the pass, the more exact they are. Use the state in a time trigger (with an offset to get a warning before the pass), and Visible Now to know when it is happening.
+
+Visible Now (12) is enabled when a satellite is added. The other sunlight and visibility entities (9 to 11 and 13) are **disabled by default**. Enable the ones you want under Settings > Devices & services > the satellite's device. The Sun's direction is computed inside the integration, so nothing is downloaded. The Earth's shadow is treated as a sharp-edged cylinder, so the times are good to a few seconds. They do not depend on where you are: "sunrise" here is the satellite's own, not yours.
 
 ---
 

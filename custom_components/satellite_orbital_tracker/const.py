@@ -11,3 +11,11 @@ def normalize_norad_id(value) -> str | None:
     if not (text.isascii() and text.isdigit()):
         return None
     return str(int(text))
+
+
+COMPASS_POINTS = ("N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW")
+
+
+def compass_point(azimuth_degrees: float) -> str:
+    """Return the compass point (N, NNE, NE ...) for an azimuth in degrees, measured clockwise from north."""
+    return COMPASS_POINTS[int(((azimuth_degrees % 360) + 11.25) // 22.5) % 16]
