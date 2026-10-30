@@ -16,7 +16,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, compass_point
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -37,6 +37,7 @@ async def async_setup_entry(
         SatelliteNextPassRemainingSensor(coordinator, entry),
         SatellitePassDurationSensor(coordinator, entry),
         SatellitePassRemainingSensor(coordinator, entry),
+        SatelliteNextVisiblePassSensor(coordinator, entry),
         SatelliteSunriseSensor(coordinator, entry),
         SatelliteSunsetSensor(coordinator, entry),
     ]
@@ -312,3 +313,48 @@ class SatelliteSunsetSensor(SatelliteShadowTimeSensor):
         super().__init__(coordinator, entry)
         self._attr_name = "Next Satellite Sunset"
         self._attr_unique_id = f"{entry.entry_id}_next_sunset"
+
+
+class SatelliteNextVisiblePassSensor(SatelliteBaseSensor):
+    """Representation of when the next pass can be seen: above the horizon, lit by the Sun, over a dark sky."""
+
+    def __init__(self, coordinator, entry: ConfigEntry):
+        super().__init__(coordinator, entry)
+        self._attr_name = "Next Visible Pass"
+        self._attr_unique_id = f"{entry.entry_id}_next_visible_pass"
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        self._attr_entity_registry_enabled_default = False  # enable it in the UI if wanted
+
+    def _visible_pass(self) -> dict | None:
+        if self.coordinator.data:
+            visible_pass = self.coordinator.data.get("next_visible_pass")
+            if visible_pass and visible_pass.get("start"):
+                return visible_pass
+        return None
+
+    @property
+    @override
+    def native_value(self):
+        """Return when the satellite becomes visible, or None if no visible pass was found in the next 7 days."""
+        visible_pass = self._visible_pass()
+        return datetime.fromisoformat(visible_pass["start"]) if visible_pass else None
+
+    @property
+    @override
+    def extra_state_attributes(self):
+        """Return the end, length, peak and directions of the visible part of the pass (times in UTC)."""
+        visible_pass = self._visible_pass()
+        if not visible_pass:
+            return {}
+        return {
+            "visible_end": visible_pass["end"],
+            "duration": round(visible_pass["duration"]),
+            "max_elevation": visible_pass["max_elevation"],
+            "max_elevation_time": visible_pass["max_elevation_time"],
+            "start_azimuth": visible_pass["start_azimuth"],
+            "start_direction": compass_point(visible_pass["start_azimuth"]),
+            "end_azimuth": visible_pass["end_azimuth"],
+            "end_direction": compass_point(visible_pass["end_azimuth"]),
+            "pass_start": visible_pass["pass_start"],
+            "pass_end": visible_pass["pass_end"],
+        }
