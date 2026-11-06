@@ -33,6 +33,8 @@ async def async_setup_entry(
         SatelliteAltitudeSensor(coordinator, entry),
         SatelliteSpeedSensor(coordinator, entry),
         SatelliteGroundDistanceSensor(coordinator, entry),
+        SatelliteCurrentElevationSensor(coordinator, entry),
+        SatelliteCurrentAzimuthSensor(coordinator, entry),
         SatelliteLineOfSightSensor(coordinator, entry),
         SatelliteMaxPassDegreesSensor(coordinator, entry),
         SatelliteNextPassTimeSensor(coordinator, entry),
@@ -207,6 +209,59 @@ class SatelliteLineOfSightSensor(SatelliteDistanceSensor):
         super().__init__(coordinator, entry)
         self._attr_name = "Line-of-Sight Distance"
         self._attr_unique_id = f"{entry.entry_id}_line_of_sight_distance"
+
+class SatelliteCurrentElevationSensor(SatelliteBaseSensor):
+    """Representation of the satellite's elevation above the horizon at home, in degrees (negative when below it)."""
+
+    def __init__(self, coordinator, entry: ConfigEntry):
+        super().__init__(coordinator, entry)
+        self._attr_name = "Current Elevation"
+        self._attr_unique_id = f"{entry.entry_id}_current_elevation"
+        self._attr_entity_registry_enabled_default = False  # enable it in the UI if wanted
+        self._attr_native_unit_of_measurement = DEGREE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_suggested_display_precision = 1
+
+    @property
+    @override
+    def native_value(self):
+        """Return the elevation in degrees, or None if it is unknown."""
+        if self.coordinator.data:
+            val = self.coordinator.data.get("current_elevation_deg")
+            if val is not None and not (isinstance(val, float) and math.isnan(val)):
+                return val
+        return None
+
+class SatelliteCurrentAzimuthSensor(SatelliteBaseSensor):
+    """Representation of the satellite's compass bearing from home, in degrees clockwise from north."""
+
+    def __init__(self, coordinator, entry: ConfigEntry):
+        super().__init__(coordinator, entry)
+        self._attr_name = "Current Azimuth"
+        self._attr_unique_id = f"{entry.entry_id}_current_azimuth"
+        self._attr_entity_registry_enabled_default = False  # enable it in the UI if wanted
+        self._attr_native_unit_of_measurement = DEGREE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_suggested_display_precision = 1
+
+    @property
+    @override
+    def native_value(self):
+        """Return the azimuth in degrees (0 to 360), or None if it is unknown."""
+        if self.coordinator.data:
+            val = self.coordinator.data.get("current_azimuth_deg")
+            if val is not None and not (isinstance(val, float) and math.isnan(val)):
+                return val
+        return None
+
+    @property
+    @override
+    def extra_state_attributes(self):
+        """Return the compass point (N, NNE, NE ...) for the azimuth."""
+        val = self.native_value
+        if val is None:
+            return {}
+        return {"direction": compass_point(val)}
 
 class SatelliteMaxPassDegreesSensor(SatelliteBaseSensor):
     """Representation of the next pass peak sky elevation angle in degrees."""

@@ -110,7 +110,7 @@ You can look up the unique NORAD Catalog Number (CATNR) for any spacecraft using
 
 ## Generated Sensors & Naming Convention
 
-Each satellite instance creates a dedicated device with fifteen namespaced entities to prevent ID collisions when tracking multiple spacecraft.
+Each satellite instance creates a dedicated device with 17 namespaced entities to prevent ID collisions when tracking multiple spacecraft.
 
 | Entity | What it shows | Default |
 | :--- | :--- | :--- |
@@ -129,6 +129,8 @@ Each satellite instance creates a dedicated device with fifteen namespaced entit
 | 13. [Next Visible Pass](#13-next-visible-pass-sensor) | When the satellite next becomes visible from home, and where to look | Disabled |
 | 14. [Ground Distance](#14-ground-distance-sensor) | Distance along the ground from home to the point below the satellite (km) | Disabled |
 | 15. [Line-of-Sight Distance](#15-line-of-sight-distance-sensor) | Straight-line distance from home to the satellite while it is above the horizon (km) | Disabled |
+| 16. [Current Elevation](#16-current-elevation-sensor) | How high the satellite is above your horizon right now (°, negative when below it) | Disabled |
+| 17. [Current Azimuth](#17-current-azimuth-sensor) | Which way to look right now: compass bearing and direction | Disabled |
 
 Enable a disabled entity under Settings > Devices & services > the satellite's device. Each entity is described below.
 
@@ -250,6 +252,24 @@ Disabled by default: enable it under Settings > Devices & services > the satelli
 Unit of Measurement: km
 Device Class: distance
 State Class: measurement
+
+### 16. Current Elevation Sensor
+Entity ID Pattern: `sensor.satellite_[name]_current_elevation`
+State: How high the satellite is above your horizon at this moment, in degrees: 0° is the horizon and 90° is straight overhead. It is negative while the satellite is below the horizon (on the other side of the Earth), so the sensor always has a value. Passes are counted from 10°.
+Disabled by default: enable it under Settings > Devices & services > the satellite's device.
+Unit of Measurement: °
+State Class: measurement
+
+### 17. Current Azimuth Sensor
+Entity ID Pattern: `sensor.satellite_[name]_current_azimuth`
+State: The compass bearing from your home location to the satellite at this moment, in degrees clockwise from north (0° north, 90° east, 180° south, 270° west). Combined with the current elevation it tells you where to look.
+Attributes:
+  - `direction` : The compass point for the bearing (N, NNE, NE ...)
+Disabled by default: enable it under Settings > Devices & services > the satellite's device.
+Unit of Measurement: °
+State Class: measurement
+
+The position is calculated at each refresh: every 5 seconds while a pass is under way, otherwise at your configured interval. It has no meaning below the horizon, but the bearing is still given.
 
 ### About the sunlight and visibility entities (9 to 13)
 The Sun's direction is computed inside the integration, so nothing is downloaded. The Earth's shadow is treated as a sharp-edged cylinder, so the shadow times are good to a few seconds. Sunlit, Next Satellite Sunrise and Next Satellite Sunset do not depend on where you are: "sunrise" here is the satellite's own, not yours.
