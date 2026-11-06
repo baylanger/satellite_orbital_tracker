@@ -225,6 +225,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             home_sun_elevation = self._home_sun_elevation(t)
             visible_pass = await self._async_get_next_visible_pass(now)
             current_altitude = self._calculate_current_altitude(t)
+            current_azimuth = self._calculate_current_azimuth(t)
 
             # Determine tracker status string based on the current sky position and upcoming pass proximity
             state_val = "In Orbit"
@@ -260,6 +261,8 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                 "longitude": lon,
                 "altitude_km": elevation,
                 "speed_km_s": speed_km_s,
+                "current_elevation_deg": current_altitude,
+                "current_azimuth_deg": current_azimuth,
                 "ground_distance_km": ground_distance_km,
                 "line_of_sight_km": line_of_sight_km,
                 "sunlit": sunlit,
@@ -627,6 +630,15 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             return float(alt.degrees)
         except Exception as err:
             _LOGGER.debug("Could not compute current elevation: %s", err)
+            return None
+
+    def _calculate_current_azimuth(self, t) -> float | None:
+        """Return the satellite's current compass bearing from the home observer, in degrees clockwise from north."""
+        try:
+            _, az, _ = (self.satellite - self.home_observer).at(t).altaz()
+            return float(az.degrees)
+        except Exception as err:
+            _LOGGER.debug("Could not compute current azimuth: %s", err)
             return None
 
     def _calculate_next_pass(self, now: datetime):
