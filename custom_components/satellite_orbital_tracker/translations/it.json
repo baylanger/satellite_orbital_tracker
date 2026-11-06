@@ -40,6 +40,63 @@
       "integer_required": "L'intervallo di aggiornamento deve essere un numero intero (senza decimali)."
     }
   },
+  "entity": {
+    "sensor": {
+      "status": {
+        "name": "Stato"
+      },
+      "orbital_altitude": {
+        "name": "Altitudine orbitale"
+      },
+      "orbital_speed": {
+        "name": "Velocità orbitale"
+      },
+      "ground_distance": {
+        "name": "Distanza al suolo"
+      },
+      "line_of_sight_distance": {
+        "name": "Distanza in linea di vista"
+      },
+      "current_elevation": {
+        "name": "Elevazione attuale"
+      },
+      "current_azimuth": {
+        "name": "Azimut attuale"
+      },
+      "next_pass_max_elevation": {
+        "name": "Elevazione massima del prossimo passaggio"
+      },
+      "next_pass_time": {
+        "name": "Ora del prossimo passaggio"
+      },
+      "next_pass_time_remaining": {
+        "name": "Tempo rimanente al prossimo passaggio"
+      },
+      "pass_duration": {
+        "name": "Durata del passaggio"
+      },
+      "pass_time_remaining": {
+        "name": "Tempo rimanente del passaggio"
+      },
+      "next_satellite_sunrise": {
+        "name": "Prossima alba del satellite"
+      },
+      "next_satellite_sunset": {
+        "name": "Prossimo tramonto del satellite"
+      },
+      "next_visible_pass": {
+        "name": "Prossimo passaggio visibile"
+      }
+    },
+    "binary_sensor": {
+      "sunlit": {
+        "name": "Illuminato dal Sole"
+      },
+      "visible_now": {
+        "name": "Visibile ora"
+      }
+    }
+  },
   "issues": {
     "satellite_lost": {
       "title": "Satellite {satellite_name} ({satellite_id}) mancante",

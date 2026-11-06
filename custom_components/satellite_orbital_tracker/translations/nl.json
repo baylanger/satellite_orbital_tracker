@@ -40,6 +40,63 @@
       "integer_required": "Het updateinterval moet een geheel getal zijn (geen decimalen)."
     }
   },
+  "entity": {
+    "sensor": {
+      "status": {
+        "name": "Status"
+      },
+      "orbital_altitude": {
+        "name": "Baanhoogte"
+      },
+      "orbital_speed": {
+        "name": "Baansnelheid"
+      },
+      "ground_distance": {
+        "name": "Afstand over de grond"
+      },
+      "line_of_sight_distance": {
+        "name": "Zichtlijnafstand"
+      },
+      "current_elevation": {
+        "name": "Huidige elevatie"
+      },
+      "current_azimuth": {
+        "name": "Huidig azimut"
+      },
+      "next_pass_max_elevation": {
+        "name": "Maximale elevatie volgende overvlucht"
+      },
+      "next_pass_time": {
+        "name": "Tijdstip volgende overvlucht"
+      },
+      "next_pass_time_remaining": {
+        "name": "Tijd tot volgende overvlucht"
+      },
+      "pass_duration": {
+        "name": "Duur overvlucht"
+      },
+      "pass_time_remaining": {
+        "name": "Resterende overvluchttijd"
+      },
+      "next_satellite_sunrise": {
+        "name": "Volgende zonsopkomst van de satelliet"
+      },
+      "next_satellite_sunset": {
+        "name": "Volgende zonsondergang van de satelliet"
+      },
+      "next_visible_pass": {
+        "name": "Volgende zichtbare overvlucht"
+      }
+    },
+    "binary_sensor": {
+      "sunlit": {
+        "name": "Door de zon verlicht"
+      },
+      "visible_now": {
+        "name": "Nu zichtbaar"
+      }
+    }
+  },
   "issues": {
     "satellite_lost": {
       "title": "Satelliet {satellite_name} ({satellite_id}) ontbreekt",

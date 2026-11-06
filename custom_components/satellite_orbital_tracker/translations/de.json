@@ -40,10 +40,67 @@
       "integer_required": "Das Aktualisierungsintervall muss eine ganze Zahl sein (keine Dezimalstellen)."
     }
   },
+  "entity": {
+    "sensor": {
+      "status": {
+        "name": "Status"
+      },
+      "orbital_altitude": {
+        "name": "Bahnhöhe"
+      },
+      "orbital_speed": {
+        "name": "Bahngeschwindigkeit"
+      },
+      "ground_distance": {
+        "name": "Entfernung am Boden"
+      },
+      "line_of_sight_distance": {
+        "name": "Sichtlinienentfernung"
+      },
+      "current_elevation": {
+        "name": "Aktuelle Elevation"
+      },
+      "current_azimuth": {
+        "name": "Aktueller Azimut"
+      },
+      "next_pass_max_elevation": {
+        "name": "Maximale Elevation des nächsten Überflugs"
+      },
+      "next_pass_time": {
+        "name": "Zeitpunkt des nächsten Überflugs"
+      },
+      "next_pass_time_remaining": {
+        "name": "Zeit bis zum nächsten Überflug"
+      },
+      "pass_duration": {
+        "name": "Überflugdauer"
+      },
+      "pass_time_remaining": {
+        "name": "Verbleibende Überflugzeit"
+      },
+      "next_satellite_sunrise": {
+        "name": "Nächster Sonnenaufgang des Satelliten"
+      },
+      "next_satellite_sunset": {
+        "name": "Nächster Sonnenuntergang des Satelliten"
+      },
+      "next_visible_pass": {
+        "name": "Nächster sichtbarer Überflug"
+      }
+    },
+    "binary_sensor": {
+      "sunlit": {
+        "name": "Von der Sonne beleuchtet"
+      },
+      "visible_now": {
+        "name": "Jetzt sichtbar"
+      }
+    }
+  },
   "issues": {
     "satellite_lost": {
       "title": "Satellit {satellite_name} ({satellite_id}) vermisst",
-      "description": "CelesTrak hat für die NORAD-ID {satellite_id} seit über 2 Stunden kontinuierlich einen 404 Not Found-Fehler zurückgegeben. Der Satellit ist möglicherweise verglüht oder außer Betrieb genommen worden."
+      "description": "CelesTrak hat für die NORAD-ID {satellite_id} seit über 24 Stunden kontinuierlich einen 404 Not Found-Fehler zurückgegeben. Der Satellit ist möglicherweise verglüht oder außer Betrieb genommen worden."
     }
   }
 }

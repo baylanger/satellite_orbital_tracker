@@ -40,10 +40,67 @@
       "integer_required": "El intervalo de actualización debe ser un número entero (sin decimales)."
     }
   },
+  "entity": {
+    "sensor": {
+      "status": {
+        "name": "Estado"
+      },
+      "orbital_altitude": {
+        "name": "Altitud orbital"
+      },
+      "orbital_speed": {
+        "name": "Velocidad orbital"
+      },
+      "ground_distance": {
+        "name": "Distancia sobre el suelo"
+      },
+      "line_of_sight_distance": {
+        "name": "Distancia en línea de visión"
+      },
+      "current_elevation": {
+        "name": "Elevación actual"
+      },
+      "current_azimuth": {
+        "name": "Acimut actual"
+      },
+      "next_pass_max_elevation": {
+        "name": "Elevación máxima del próximo paso"
+      },
+      "next_pass_time": {
+        "name": "Hora del próximo paso"
+      },
+      "next_pass_time_remaining": {
+        "name": "Tiempo restante para el próximo paso"
+      },
+      "pass_duration": {
+        "name": "Duración del paso"
+      },
+      "pass_time_remaining": {
+        "name": "Tiempo restante del paso"
+      },
+      "next_satellite_sunrise": {
+        "name": "Próximo amanecer del satélite"
+      },
+      "next_satellite_sunset": {
+        "name": "Próximo atardecer del satélite"
+      },
+      "next_visible_pass": {
+        "name": "Próximo paso visible"
+      }
+    },
+    "binary_sensor": {
+      "sunlit": {
+        "name": "Iluminado por el Sol"
+      },
+      "visible_now": {
+        "name": "Visible ahora"
+      }
+    }
+  },
   "issues": {
     "satellite_lost": {
       "title": "Satélite {satellite_name} ({satellite_id}) desaparecido",
-      "description": "CelesTrak ha devuelto un error 404 No encontrado para el ID de NORAD {satellite_id} de forma continua durante más de 2 horas. Es posible que el satélite se haya desintegrado o haya sido dado de baja."
+      "description": "CelesTrak ha devuelto un error 404 No encontrado para el ID de NORAD {satellite_id} de forma continua durante más de 24 horas. Es posible que el satélite se haya desintegrado o haya sido dado de baja."
     }
   }
 }

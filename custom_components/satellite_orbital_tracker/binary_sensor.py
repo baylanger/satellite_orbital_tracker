@@ -28,7 +28,7 @@ class SatelliteSunlitSensor(SatelliteBaseEntity, BinarySensorEntity):
 
     def __init__(self, coordinator, entry: ConfigEntry):
         super().__init__(coordinator, entry)
-        self._attr_name = "Sunlit"
+        self._attr_translation_key = "sunlit"
         self._attr_unique_id = f"{entry.entry_id}_sunlit"
         self._attr_device_class = BinarySensorDeviceClass.LIGHT
         self._attr_entity_registry_enabled_default = False  # enable it in the UI if wanted
@@ -47,7 +47,7 @@ class SatelliteVisibleNowSensor(SatelliteBaseEntity, BinarySensorEntity):
 
     def __init__(self, coordinator, entry: ConfigEntry):
         super().__init__(coordinator, entry)
-        self._attr_name = "Visible Now"
+        self._attr_translation_key = "visible_now"
         self._attr_unique_id = f"{entry.entry_id}_visible_now"
 
     @property
