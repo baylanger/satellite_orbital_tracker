@@ -297,6 +297,7 @@ For each satellite, the integration fetches the public orbital element sets (TLE
 Orbital Drift: Satellites experience constant perturbations from atmospheric drag, Earth's non-uniform gravity field, and solar radiation pressure. Over time, predicting positions too far into the future using stale TLEs introduces increasing error.
 - CelesTrak Updates: CelesTrak updates General Perturbations (GP) elements multiple times daily for active satellites. Refreshing every 12 hours strikes an ideal balance—it keeps your local SGP4 propagation accurate and up-to-date without spamming external servers or hitting rate limits.
 - Resilient Caching: If CelesTrak experiences a brief downtime or network error during a scheduled 12-hour refresh, the coordinator falls back to your currently cached TLE data rather than crashing the sensor states.
+- No Connection Right After a Restart: If the download fails because there is no connection at all, the integration tries again after a minute, up to three times, and only writes a message to the log if all of them fail. After that it goes back to one attempt per hour.
 
 ---
 
