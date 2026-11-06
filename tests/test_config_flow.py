@@ -33,8 +33,8 @@ async def test_form_user(hass: HomeAssistant, test_sample_tle_response) -> None:
     # Mock CelesTrak JSON response for a valid satellite using TEST_NORAD_ID
     with aioresponses() as m:
         m.get(
-            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=json",
-            payload=test_sample_tle_response,
+            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=tle",
+            body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}\n",
             status=200,
         )
 
@@ -59,7 +59,7 @@ async def test_form_invalid_norad_id(hass: HomeAssistant) -> None:
     invalid_id = "999999"
     with aioresponses() as m:
         m.get(
-            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={invalid_id}&FORMAT=json",
+            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={invalid_id}&FORMAT=tle",
             status=404,
         )
 
@@ -80,7 +80,7 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
 
     with aioresponses() as m:
         m.get(
-            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=json",
+            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=tle",
             status=500,
         )
 
@@ -149,7 +149,7 @@ async def test_config_flow_already_configured(hass: HomeAssistant) -> None:
         m.get(
             re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$"),
             status=200,
-            body=f'[{{"OBJECT_NAME": "{TEST_SATELLITE_NAME}"}}]',
+            body=f"{TEST_SATELLITE_NAME}\n{TEST_TLE_LINE1}\n{TEST_TLE_LINE2}\n",
         )
 
         result2 = await hass.config_entries.flow.async_configure(
@@ -189,16 +189,16 @@ async def test_options_flow_invalid_interval(hass: HomeAssistant) -> None:
         pytest.fail("Expected a schema validation error for out-of-range interval")
 
 async def test_form_malformed_or_empty_celestrak_response(hass: HomeAssistant) -> None:
-    """Test handling of 200 OK with empty brackets or malformed JSON payload from CelesTrak."""
+    """Test handling of 200 OK with an empty or malformed answer (no TLE lines) from CelesTrak."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": "user"}
     )
     assert result["type"] == FlowResultType.FORM
 
     with aioresponses() as m:
-        # Mock a 200 OK response with an empty list [] which should trigger InvalidNoradId
+        # Mock a 200 OK response with an empty list [] (no TLE lines), which should trigger InvalidNoradId
         m.get(
-            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=json",
+            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=tle",
             status=200,
             body="[]",
         )
@@ -234,11 +234,11 @@ async def test_form_unexpected_parser_exception(hass: HomeAssistant) -> None:
     )
 
     with aioresponses() as m:
-        # Return invalid non-JSON body string to trigger parsing exception handling
+        # Return a body without TLE lines, which is reported as an invalid NORAD ID
         m.get(
-            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=json",
+            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={TEST_NORAD_ID}&FORMAT=tle",
             status=200,
-            body="Not a valid json string...",
+            body="Not a valid TLE...",
         )
 
         result2 = await hass.config_entries.flow.async_configure(
@@ -258,7 +258,7 @@ async def test_form_unknown_norad_id_plain_text_answer(hass: HomeAssistant) -> N
 
     with aioresponses() as m:
         m.get(
-            "https://celestrak.org/NORAD/elements/gp.php?CATNR=99999&FORMAT=json",
+            "https://celestrak.org/NORAD/elements/gp.php?CATNR=99999&FORMAT=tle",
             status=200,
             body="No GP data found",
             content_type="text/plain",

@@ -15,6 +15,7 @@
     },
     "error": {
       "cannot_connect": "No se pudo conectar a CelesTrak, inténtalo más tarde",
+      "celestrak_refused": "CelesTrak rechazó la solicitud. Limita la frecuencia con la que una dirección puede consultar, así que espera unas horas antes de volver a intentarlo",
       "invalid_norad_id": "El ID de NORAD introducido no existe",
       "norad_id_not_numeric": "Un ID de NORAD solo contiene dígitos (p. ej., 25544)",
       "invalid_interval": "El intervalo de actualización debe estar entre 5 y 3600 segundos.",

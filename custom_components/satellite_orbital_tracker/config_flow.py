@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
+
 import aiohttp
 import probatio
 
@@ -10,42 +12,61 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 import homeassistant.helpers.selector as selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN, normalize_norad_id
 
 class CannotConnect(Exception):
     """Error to indicate we cannot connect to the CelesTrak API endpoint."""
 
+class CelesTrakRefused(Exception):
+    """Error to indicate CelesTrak refused the request because the address asked too often."""
+
+
 class InvalidNoradId(Exception):
     """Error to indicate the NORAD catalog ID is invalid or cannot be found."""
 
 
-async def _async_get_satellite_name(hass: HomeAssistant, norad_id: str) -> str:
-    """Fetch the official satellite name from CelesTrak JSON endpoint with connection and existence validation."""
-    url = f"https://celestrak.org/NORAD/elements/gp.php?CATNR={norad_id}&FORMAT=json"
+async def _async_download_tle(hass: HomeAssistant, norad_id: str) -> tuple[str, str, str]:
+    """Download the TLE from CelesTrak and return (name, line 1, line 2).
+
+    One request does it all: it proves that the NORAD ID exists and that CelesTrak can be reached, gives the
+    satellite's name for the entry title, and the TLE itself is saved so that the setup of the new entry does
+    not have to ask CelesTrak again.
+    """
+    url = f"https://celestrak.org/NORAD/elements/gp.php?CATNR={norad_id}&FORMAT=tle"
+    headers = {"User-Agent": "HomeAssistant-SatelliteOrbitalTracker/2.0"}
     session = async_get_clientsession(hass)
 
     try:
-        async with session.get(url, timeout=10) as response:
+        async with session.get(url, headers=headers, timeout=10) as response:
             # CelesTrak returns 404 status when a NORAD catalog ID does not exist
             if response.status == 404:
                 raise InvalidNoradId
+            # 403: CelesTrak limits how often an address may ask and refuses the request (its usage policy lists
+            # 403 among the errors it sends before it blocks an address)
+            if response.status == 403:
+                raise CelesTrakRefused
             if response.status != 200:
                 raise CannotConnect
 
-            # Do not insist on a JSON content type: CelesTrak can answer an unknown catalog number with HTTP 200
-            # and a plain-text "No GP data found". That body then fails to parse and is reported as an invalid
-            # NORAD ID below, instead of the ContentTypeError (an aiohttp.ClientError) showing "cannot connect".
-            data = await response.json(content_type=None)
-            if not data or not isinstance(data, list) or len(data) == 0:
+            # An unknown catalog number can also be answered with HTTP 200 and a plain-text "No GP data found":
+            # there are then no TLE lines, which is reported as an invalid NORAD ID.
+            text = await response.text()
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            line1 = next((line for line in lines if line.startswith("1 ")), None)
+            line2 = next((line for line in lines if line.startswith("2 ")), None)
+            if not line1 and not line2:
                 raise InvalidNoradId
+            if not line1 or not line2:
+                raise CannotConnect  # an incomplete answer is a bad connection, not a bad ID
 
-            # Extract official object name or provide a fallback identifier string
-            return data[0].get("OBJECT_NAME", f"Satellite {norad_id}").strip()
+            names = [line for line in lines if not line.startswith(("1 ", "2 ")) and len(line) > 2 and "---" not in line]
+            return (names[0] if names else f"Satellite {norad_id}"), line1, line2
 
     except (aiohttp.ClientError, TimeoutError, asyncio.TimeoutError):
         raise CannotConnect
-    except (InvalidNoradId, CannotConnect):
+    except (InvalidNoradId, CannotConnect, CelesTrakRefused):
         raise
     except Exception:
         raise InvalidNoradId
@@ -75,8 +96,10 @@ class SatelliteOrbitalTrackerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
                 errors["update_interval"] = "invalid_interval"
             else:
                 try:
-                    # Attempt to fetch name and validate existence/connectivity against CelesTrak
-                    satellite_name = await _async_get_satellite_name(self.hass, norad_id)
+                    # Download the TLE: validates existence/connectivity against CelesTrak and gives the name
+                    satellite_name, line1, line2 = await _async_download_tle(self.hass, norad_id)
+                except CelesTrakRefused:
+                    errors["norad_id"] = "celestrak_refused"
                 except CannotConnect:
                     errors["norad_id"] = "cannot_connect"
                 except InvalidNoradId:
@@ -85,6 +108,17 @@ class SatelliteOrbitalTrackerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
                     # Set unique ID based on NORAD catalog number and abort if already configured
                     await self.async_set_unique_id(norad_id)
                     self._abort_if_unique_id_configured()
+
+                    # Save the TLE like the coordinator does, so the new entry starts without another download
+                    now = datetime.now(timezone.utc).isoformat()
+                    await Store(self.hass, 1, f"{DOMAIN}_{norad_id}").async_save({
+                        "line1": line1,
+                        "line2": line2,
+                        "name": satellite_name,
+                        "timestamp": now,
+                        "last_attempt": now,
+                        "last_status": 200,
+                    })
 
                     user_input["update_interval"] = int(interval)
                     user_input["norad_id"] = norad_id

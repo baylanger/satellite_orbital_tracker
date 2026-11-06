@@ -614,7 +614,7 @@ async def test_coordinator_tle_cache_parse_exception(hass: HomeAssistant) -> Non
         data = await coordinator._async_update_data()
         assert data["latitude"] is not None
 
-async def test_coordinator_dynamic_title_update(hass: HomeAssistant) -> None:
+async def test_coordinator_dynamic_title_update(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
     """Test that coordinator updates the config entry title if CelesTrak renames a satellite the integration named."""
     # The name saved from the previous download is the one the integration chose, so the title may follow it
     store = Store(hass, 1, f"{DOMAIN}_{TEST_NORAD_ID}")
@@ -639,6 +639,12 @@ async def test_coordinator_dynamic_title_update(hass: HomeAssistant) -> None:
         )
         coordinator = SatelliteDataUpdateCoordinator(hass, config_entry, TEST_TIMESCALE)
         await coordinator._async_update_data()
+        assert config_entry.title == "Old Name"  # the saved TLE is used while Home Assistant starts
+
+        # The due download follows once the one-minute start-up delay is over
+        freezer.tick(timedelta(seconds=61))
+        await coordinator._async_update_data()
+        await coordinator.async_shutdown()
 
         # Verify entry title was updated to match the fetched name
         assert config_entry.title == TEST_SATELLITE_NAME
