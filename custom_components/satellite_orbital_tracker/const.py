@@ -13,6 +13,8 @@ def normalize_norad_id(value) -> str | None:
     return str(int(text))
 
 
+EARTH_MEAN_RADIUS_KM = 6371.0088
+
 COMPASS_POINTS = ("N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW")
 
 
