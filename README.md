@@ -110,7 +110,7 @@ You can look up the unique NORAD Catalog Number (CATNR) for any spacecraft using
 
 ## Generated Sensors & Naming Convention
 
-Each satellite instance creates a dedicated device with thirteen namespaced entities to prevent ID collisions when tracking multiple spacecraft.
+Each satellite instance creates a dedicated device with fifteen namespaced entities to prevent ID collisions when tracking multiple spacecraft.
 
 | Entity | What it shows | Default |
 | :--- | :--- | :--- |
@@ -127,6 +127,8 @@ Each satellite instance creates a dedicated device with thirteen namespaced enti
 | 11. [Next Satellite Sunrise](#11-next-satellite-sunrise-sensor) | When the satellite next comes out of the Earth's shadow | Disabled |
 | 12. [Next Satellite Sunset](#12-next-satellite-sunset-sensor) | When the satellite next enters the Earth's shadow | Disabled |
 | 13. [Next Visible Pass](#13-next-visible-pass-sensor) | When the satellite next becomes visible from home, and where to look | Disabled |
+| 14. [Ground Distance](#14-ground-distance-sensor) | Distance along the ground from home to the point below the satellite (km) | Disabled |
+| 15. [Line-of-Sight Distance](#15-line-of-sight-distance-sensor) | Straight-line distance from home to the satellite while it is above the horizon (km) | Disabled |
 
 Enable a disabled entity under Settings > Devices & services > the satellite's device. Each entity is described below.
 
@@ -232,6 +234,22 @@ Attributes:
   - `end_azimuth`, `end_direction` : Where it disappears
   - `pass_start`, `pass_end` : The whole pass above 10°, which may be longer than the visible part
 Predictions several days ahead are estimates: they are recomputed with every new TLE download, and the closer the pass, the more exact they are. Use the state in a time trigger (with an offset to get a warning before the pass), and Visible Now to know when it is happening.
+
+### 14. Ground Distance Sensor
+Entity ID Pattern: `sensor.satellite_[name]_ground_distance`
+State: How far the point on the ground directly below the satellite is from your home location, measured along the Earth's surface. It is available all the time, also when the satellite is on the other side of the planet (up to about 20,000 km). Home Assistant shows it in miles if your unit system is imperial.
+Disabled by default: enable it under Settings > Devices & services > the satellite's device.
+Unit of Measurement: km
+Device Class: distance
+State Class: measurement
+
+### 15. Line-of-Sight Distance Sensor
+Entity ID Pattern: `sensor.satellite_[name]_line_of_sight_distance`
+State: The straight-line distance from your home location to the satellite, the distance to look or to send a signal over, while the satellite is above your horizon. Unknown when it is below the horizon, because the line would pass through the Earth. It can never be less than the satellite's altitude: for the ISS it is about 420 km straight overhead and about 1,500 km at the start of a pass (10° elevation). It is longer than the ground distance by about the altitude near the top of a pass and by 5 to 7% near the horizon.
+Disabled by default: enable it under Settings > Devices & services > the satellite's device.
+Unit of Measurement: km
+Device Class: distance
+State Class: measurement
 
 ### About the sunlight and visibility entities (9 to 13)
 The Sun's direction is computed inside the integration, so nothing is downloaded. The Earth's shadow is treated as a sharp-edged cylinder, so the shadow times are good to a few seconds. Sunlit, Next Satellite Sunrise and Next Satellite Sunset do not depend on where you are: "sunrise" here is the satellite's own, not yours.

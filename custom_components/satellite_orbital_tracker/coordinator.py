@@ -19,7 +19,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import DOMAIN, normalize_norad_id
+from .const import DOMAIN, EARTH_MEAN_RADIUS_KM, normalize_norad_id
 from .sun import is_sunlit, sun_direction
 
 _LOGGER = logging.getLogger(__name__)
@@ -217,6 +217,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             elevation = float(subpoint.elevation.km)
             # Speed relative to the Earth's centre (the inertial frame the orbital elements are defined in)
             speed_km_s = math.sqrt(sum(float(c) ** 2 for c in geocentric.velocity.km_per_s))
+            ground_distance_km, line_of_sight_km = self._distances_from_home(t, lat, lon)
 
             next_pass = await self._async_get_next_pass(now)
             sunlit = self._current_sunlit(t, geocentric)
@@ -259,6 +260,8 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                 "longitude": lon,
                 "altitude_km": elevation,
                 "speed_km_s": speed_km_s,
+                "ground_distance_km": ground_distance_km,
+                "line_of_sight_km": line_of_sight_km,
                 "sunlit": sunlit,
                 "home_sun_elevation": home_sun_elevation,
                 "next_visible_pass": visible_pass,
@@ -402,6 +405,34 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         self._next_pass_cache_key = self.satellite
         self._next_pass_cache_time = now
         return result
+
+    @staticmethod
+    def _great_circle_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        """Return the distance along the Earth's surface between two points (degrees), in km (haversine)."""
+        phi1, phi2 = math.radians(lat1), math.radians(lat2)
+        a = math.sin((phi2 - phi1) / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
+        return 2 * EARTH_MEAN_RADIUS_KM * math.asin(min(1.0, math.sqrt(a)))
+
+    def _distances_from_home(self, t, latitude: float, longitude: float) -> tuple[float | None, float | None]:
+        """Return how far the satellite is from home: along the ground to the point below it, and in a straight line.
+
+        The straight-line distance is only given while the satellite is above the horizon, where it is the
+        distance to look or to send a signal. Below the horizon it would cross the Earth, so it is None.
+        """
+        ground = line_of_sight = None
+        try:
+            ground = self._great_circle_km(
+                self.home_observer.latitude.degrees, self.home_observer.longitude.degrees, latitude, longitude
+            )
+        except Exception as err:
+            _LOGGER.debug("Could not compute the ground distance to the satellite: %s", err)
+        try:
+            altitude, _, distance = (self.satellite - self.home_observer).at(t).altaz()
+            if altitude.degrees >= 0:
+                line_of_sight = float(distance.km)
+        except Exception as err:
+            _LOGGER.debug("Could not compute the line-of-sight distance to the satellite: %s", err)
+        return ground, line_of_sight
 
     def _current_sunlit(self, t, geocentric) -> bool | None:
         """Return whether the Sun shines on the satellite now, or None if that could not be worked out."""

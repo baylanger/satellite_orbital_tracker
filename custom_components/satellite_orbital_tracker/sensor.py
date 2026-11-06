@@ -32,6 +32,8 @@ async def async_setup_entry(
         SatelliteStatusSensor(coordinator, entry),
         SatelliteAltitudeSensor(coordinator, entry),
         SatelliteSpeedSensor(coordinator, entry),
+        SatelliteGroundDistanceSensor(coordinator, entry),
+        SatelliteLineOfSightSensor(coordinator, entry),
         SatelliteMaxPassDegreesSensor(coordinator, entry),
         SatelliteNextPassTimeSensor(coordinator, entry),
         SatelliteNextPassRemainingSensor(coordinator, entry),
@@ -162,6 +164,49 @@ class SatelliteSpeedSensor(SatelliteBaseSensor):
             if val is not None and not (isinstance(val, float) and math.isnan(val)):
                 return {"speed_km_s": round(val, 3)}
         return {}
+
+class SatelliteDistanceSensor(SatelliteBaseSensor):
+    """Base class for the distances from home to the satellite, in km. Disabled until enabled in the UI."""
+
+    _data_key = ""
+
+    def __init__(self, coordinator, entry: ConfigEntry):
+        super().__init__(coordinator, entry)
+        self._attr_entity_registry_enabled_default = False  # enable it in the UI if wanted
+        self._attr_device_class = SensorDeviceClass.DISTANCE
+        self._attr_native_unit_of_measurement = UnitOfLength.KILOMETERS
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_suggested_display_precision = 0
+
+    @property
+    @override
+    def native_value(self):
+        """Return the distance in km, or None if it is unknown."""
+        if self.coordinator.data:
+            val = self.coordinator.data.get(self._data_key)
+            if val is not None and not (isinstance(val, float) and math.isnan(val)):
+                return val
+        return None
+
+class SatelliteGroundDistanceSensor(SatelliteDistanceSensor):
+    """Representation of the distance along the ground from home to the point below the satellite."""
+
+    _data_key = "ground_distance_km"
+
+    def __init__(self, coordinator, entry: ConfigEntry):
+        super().__init__(coordinator, entry)
+        self._attr_name = "Ground Distance"
+        self._attr_unique_id = f"{entry.entry_id}_ground_distance"
+
+class SatelliteLineOfSightSensor(SatelliteDistanceSensor):
+    """Representation of the straight-line distance from home to the satellite while it is above the horizon."""
+
+    _data_key = "line_of_sight_km"
+
+    def __init__(self, coordinator, entry: ConfigEntry):
+        super().__init__(coordinator, entry)
+        self._attr_name = "Line-of-Sight Distance"
+        self._attr_unique_id = f"{entry.entry_id}_line_of_sight_distance"
 
 class SatelliteMaxPassDegreesSensor(SatelliteBaseSensor):
     """Representation of the next pass peak sky elevation angle in degrees."""
