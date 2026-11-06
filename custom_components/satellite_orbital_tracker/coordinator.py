@@ -27,6 +27,8 @@ _LOGGER = logging.getLogger(__name__)
 # TLE polling, retry intervals, and crew fetch frequency constants
 TLE_FETCH_INTERVAL = timedelta(hours=12)         # Normal interval between successful fetches
 TLE_RETRY_INTERVAL = timedelta(hours=1)          # Shorter retry interval if the last fetch failed
+TLE_QUICK_RETRY_INTERVAL = timedelta(minutes=1)  # Retry delay after a connection failure (no HTTP answer at all)
+TLE_QUICK_RETRIES = 3                            # Quick retries (and quiet logging) before falling back to the hourly retry
 LOST_SATELLITE_WINDOW = timedelta(hours=24)      # Duration of continuous 404s before raising a repair issue
 MAX_CONSECUTIVE_CALC_FAILURES = 5                # Calculation errors in a row before entities go unavailable
 CREW_FETCH_INTERVAL = timedelta(hours=24)        # Only scrape NASA crew manifest once a day
@@ -84,6 +86,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         self.last_tle_attempt = None      # Timestamp of last fetch ATTEMPT (success or fail)
         self.calc_failures = 0            # Consecutive orbital calculation failures
         self.last_fetch_status = 200      # Track HTTP status code of the last attempt
+        self.connection_failures = 0      # Consecutive TLE downloads that failed without any HTTP answer
         self.first_404_timestamp = None   # Tracks when a continuous 404 missing satellite streak started
         self.crew_members = []            # Cached list of current ISS crew members
         self.last_crew_fetch = None       # Timestamp of last successful crew scrape
@@ -154,7 +157,13 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
 
             # 2. Check if we need to fetch a fresh TLE using intelligent interval / backoff logic
             time_since_last_attempt = (now - self.last_tle_attempt) if self.last_tle_attempt else None
-            required_interval = TLE_FETCH_INTERVAL if self.last_fetch_status == 200 else TLE_RETRY_INTERVAL
+            if self.last_fetch_status == 200:
+                required_interval = TLE_FETCH_INTERVAL
+            elif self.last_fetch_status == 0 and self.connection_failures <= TLE_QUICK_RETRIES:
+                # No connection yet (typically right after Home Assistant starts): try again soon, a few times
+                required_interval = TLE_QUICK_RETRY_INTERVAL
+            else:
+                required_interval = TLE_RETRY_INTERVAL
 
             should_fetch = (
                 self.satellite is None
@@ -166,11 +175,16 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                 success, status_code = await self._async_fetch_and_parse_tle()
                 self.last_tle_attempt = now
                 self.last_fetch_status = status_code
+                self.connection_failures = self.connection_failures + 1 if status_code == 0 else 0
 
                 if not success:
                     if self.satellite is not None:
-                        # Graceful fallback: log warning and continue using stale cached orbital elements
-                        _LOGGER.warning(
+                        # Graceful fallback: continue using the cached orbital elements. The first few connection
+                        # failures are expected while the network comes up after a restart, so they are only
+                        # logged at debug level; a failure that lasts is a warning.
+                        quiet = status_code == 0 and self.connection_failures <= TLE_QUICK_RETRIES
+                        _LOGGER.log(
+                            logging.DEBUG if quiet else logging.WARNING,
                             "Failed to fetch fresh TLE from CelesTrak (Status: %s). Using cached TLE data for %s.",
                             status_code,
                             self.satellite_name
@@ -779,5 +793,9 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
 
                 return True, status_code
         except Exception as err:
-            _LOGGER.error("TLE fetch exception for %s: %s", self.satellite_name, err)
+            # Quiet for the first few attempts: the network is often not up yet right after a restart
+            _LOGGER.log(
+                logging.DEBUG if self.connection_failures < TLE_QUICK_RETRIES else logging.ERROR,
+                "TLE fetch exception for %s: %s %s", self.satellite_name, type(err).__name__, err,
+            )
             return False, 0
