@@ -11,7 +11,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.satellite_orbital_tracker.const import DOMAIN, normalize_norad_id
 from custom_components.satellite_orbital_tracker.coordinator import SatelliteDataUpdateCoordinator
 
-from conftest import ISS_NORAD_ID, ISS_SATELLITE_NAME, TEST_TIMESCALE
+from conftest import ISS_NORAD_ID, ISS_SATELLITE_NAME, ISS_TLE_LINE1, ISS_TLE_LINE2, TEST_TIMESCALE
 
 CELESTRAK_URL = re.compile(r"^https://celestrak\.org/NORAD/elements/gp\.php.*$")
 
@@ -42,7 +42,7 @@ async def test_form_rejects_non_numeric_id_without_calling_celestrak(hass: HomeA
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
 
     with aioresponses() as m:
-        m.get(CELESTRAK_URL, status=200, payload=[{"OBJECT_NAME": ISS_SATELLITE_NAME}], repeat=True)
+        m.get(CELESTRAK_URL, status=200, body=f"{ISS_SATELLITE_NAME}\n{ISS_TLE_LINE1}\n{ISS_TLE_LINE2}\n", repeat=True)
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"], {"norad_id": norad_id, "update_interval": 120}
         )
@@ -60,9 +60,9 @@ async def test_form_strips_leading_zeros(hass: HomeAssistant) -> None:
         "custom_components.satellite_orbital_tracker.async_setup_entry", return_value=True
     ):
         m.get(
-            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={ISS_NORAD_ID}&FORMAT=json",
+            f"https://celestrak.org/NORAD/elements/gp.php?CATNR={ISS_NORAD_ID}&FORMAT=tle",
             status=200,
-            payload=[{"OBJECT_NAME": ISS_SATELLITE_NAME}],
+            body=f"{ISS_SATELLITE_NAME}\n{ISS_TLE_LINE1}\n{ISS_TLE_LINE2}\n",
         )
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"], {"norad_id": " 025544 ", "update_interval": 120}
@@ -82,7 +82,7 @@ async def test_form_leading_zero_duplicate_is_already_configured(hass: HomeAssis
 
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
     with aioresponses() as m:
-        m.get(CELESTRAK_URL, status=200, payload=[{"OBJECT_NAME": ISS_SATELLITE_NAME}])
+        m.get(CELESTRAK_URL, status=200, body=f"{ISS_SATELLITE_NAME}\n{ISS_TLE_LINE1}\n{ISS_TLE_LINE2}\n")
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"], {"norad_id": "025544", "update_interval": 120}
         )

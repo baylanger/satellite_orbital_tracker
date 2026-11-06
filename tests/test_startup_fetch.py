@@ -7,7 +7,7 @@ from aioresponses import aioresponses
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
 from custom_components.satellite_orbital_tracker.const import DOMAIN
 from custom_components.satellite_orbital_tracker.coordinator import SatelliteDataUpdateCoordinator
@@ -37,6 +37,12 @@ async def _save_cache(hass: HomeAssistant, age: timedelta, name: str = TEST_SATE
         "name": name,
         "timestamp": (dt_util.utcnow() - age).isoformat(),
     })
+
+
+async def _finish_startup_delay(hass: HomeAssistant) -> None:
+    """Let the one-minute start-up delay pass, after which a due TLE download is made."""
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=90))
+    await hass.async_block_till_done()
 
 
 class _CoordinatorCounter:
@@ -91,8 +97,8 @@ async def test_restart_with_fresh_cache_does_not_download(hass: HomeAssistant) -
         assert _celestrak_requests(m) == 0
 
 
-async def test_restart_with_stale_cache_downloads(hass: HomeAssistant) -> None:
-    """A TLE cached more than 12 hours ago is refreshed at start-up."""
+async def test_restart_with_stale_cache_downloads_after_a_minute(hass: HomeAssistant) -> None:
+    """A TLE cached more than 12 hours ago is used at first, and refreshed once Home Assistant has started."""
     await _save_cache(hass, timedelta(hours=13))
     entry = _add_entry(hass)
 
@@ -100,7 +106,10 @@ async def test_restart_with_stale_cache_downloads(hass: HomeAssistant) -> None:
         m.get(CELESTRAK_URL, status=200, body=TLE_BODY, repeat=True)
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
+        assert _celestrak_requests(m) == 0
+        assert hass.data[DOMAIN][entry.entry_id].satellite is not None  # the sensors run from the saved TLE
 
+        await _finish_startup_delay(hass)
         assert _celestrak_requests(m) == 1
 
 
@@ -113,6 +122,7 @@ async def test_cache_timestamp_in_the_future_downloads(hass: HomeAssistant) -> N
         m.get(CELESTRAK_URL, status=200, body=TLE_BODY, repeat=True)
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
+        await _finish_startup_delay(hass)
 
         assert _celestrak_requests(m) == 1
 
@@ -126,6 +136,7 @@ async def test_new_celestrak_name_updates_title_without_reload(hass: HomeAssista
         m.get(CELESTRAK_URL, status=200, body=TLE_BODY, repeat=True)
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
+        await _finish_startup_delay(hass)
 
         assert entry.title == TEST_SATELLITE_NAME
         assert built.count == 1

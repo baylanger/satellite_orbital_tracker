@@ -5,7 +5,8 @@ import re
 from aioresponses import aioresponses
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
 from custom_components.satellite_orbital_tracker.const import DOMAIN
 
@@ -29,6 +30,9 @@ async def _setup_with_download(hass: HomeAssistant, title: str, cached_name: str
         m.get(CELESTRAK_URL, status=200, body=CSS_BODY, repeat=True)
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
+        if cached_name is not None:  # a saved TLE is used first and refreshed after the start-up delay
+            async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=90))
+            await hass.async_block_till_done()
     return entry
 
 

@@ -20,7 +20,7 @@
 
 Track the International Space Station (ISS), the Hubble Space Telescope, or any custom satellite simultaneously in Home Assistant.
 
-This integration operates entirely locally and does not rely on external cloud APIs except for fetching, every 12hrs, public orbital element sets (TLEs) from CelesTrak. The last download is saved, so restarting Home Assistant does not download them again.
+This integration operates entirely locally and does not rely on external cloud APIs except for fetching, every 12hrs, public orbital element sets (TLEs) from CelesTrak. The last download is saved, so restarting Home Assistant only downloads them again when they are more than 12 hours old.
 
 It is an advanced, high-precision custom integration for Home Assistant that tracks any satellite using real-time orbital mechanics. It uses local SGP4 orbit propagation using [Skyfield](https://rhodesmill.org/skyfield/) and your Home Assistant zone coordinates to calculate live subpoint positions and predict upcoming overhead passes.
 
@@ -48,8 +48,8 @@ Contributions, bug reports, and suggestions are always welcome! If you have an i
 ### Robust Error Handling & Repair Notifications
 
 The integration includes built-in resilience for tracking satellite data from CelesTrak:
-- **Transient Error Backoff:** If CelesTrak returns temporary server errors (5xx), rate limits you (403) or any other non-200 response, the coordinator backs off and retries on an accelerated 1-hour schedule rather than waiting for the standard 12-hour sync window. These responses are never treated as a missing satellite.
-- **Lost Satellite Detection (24-Hour Grace Period):** If CelesTrak returns a continuous `404 Not Found`, or an HTTP 200 without any TLE data, for over 24 hours (indicating a decayed or decommissioned satellite), Home Assistant will automatically trigger a **Repair Issue** notification. The start of the outage is saved, so restarting Home Assistant during the outage does not restart the 24-hour count.
+- **Transient Error Backoff:** If CelesTrak returns temporary server errors (5xx), rate limits you (403) or any other non-200 response, the coordinator does not ask again for 6 hours, which is at most 4 attempts a day per satellite, instead of the standard 12-hour sync. The failed attempt is saved, so restarting Home Assistant does not skip the wait. The log says why the download failed and when the next attempt will be made. These responses are never treated as a missing satellite.
+- **Lost Satellite Detection (24-Hour Grace Period):** If CelesTrak returns a continuous `404 Not Found`, or an HTTP 200 without any TLE data, for over 24 hours (indicating a decayed or decommissioned satellite), Home Assistant will automatically trigger a **Repair Issue** notification. The satellite is checked every 6 hours, so the notification can come up to 6 hours after the 24-hour mark. The start of the outage is saved, so restarting Home Assistant during the outage does not restart the 24-hour count.
 - **Automatic Recovery:** If the satellite shows back up in the CelesTrak database and returns a valid TLE (HTTP 200) after a 404 repair was raised, the integration automatically clears the repair issue and resets its internal tracking.
 - **No Frozen Positions:** If the orbital calculation fails 5 times in a row, the sensors become unavailable instead of continuing to show the last known position.
 
@@ -91,6 +91,11 @@ In Home Assistant,
 | **Update Interval** | Number | `120` | How often (in seconds) the sensor data and coordinates refresh (bounded between 5 and 3600 seconds). While a satellite is above 10° over your home (a pass in progress), it refreshes every 5 seconds instead. |
 
 5. Click **Submit**.
+
+Submitting asks CelesTrak once for the satellite's TLE. That one answer checks that the NORAD ID exists, gives the entry its name and is saved, so the new satellite starts without a second request. If the form shows an error:
+- *The entered NORAD ID does not exist*: CelesTrak has no data for that number.
+- *Failed to connect to CelesTrak, try later*: no answer, a timeout or a server error. Nothing is saved, and you can submit again.
+- *CelesTrak refused the request*: CelesTrak limits how often an address can ask. Wait a few hours before trying again.
 
 ### Managing Options
 You can later adjust the polling update interval at any time by clicking the **Configure** (gear) button on the integration entry in your UI.
@@ -331,13 +336,13 @@ grid_options:
 
 ## Public orbital element sets (TLEs)
 
-For each satellite, the integration fetches the public orbital element sets (TLEs) every 12 hours. The last download is saved: at startup, or when the integration reloads after an options change, the saved TLEs are reused while they are less than 12 hours old, and fetched right away when they are older (or when none were saved yet).
+For each satellite, the integration fetches the public orbital element sets (TLEs) every 12 hours. The last download, and the last attempt when it failed, are saved. At startup, or when the integration reloads after an options change, the saved TLEs are used straight away. If they are more than 12 hours old, a new download is made one minute later, so that Home Assistant can finish starting first. After a failed download nothing is tried for 6 hours, also across restarts. A satellite with no saved TLEs (a new one) is downloaded right away.
 
 - Why 12 Hours?
 Orbital Drift: Satellites experience constant perturbations from atmospheric drag, Earth's non-uniform gravity field, and solar radiation pressure. Over time, predicting positions too far into the future using stale TLEs introduces increasing error.
 - CelesTrak Updates: CelesTrak updates General Perturbations (GP) elements multiple times daily for active satellites. Refreshing every 12 hours strikes an ideal balance—it keeps your local SGP4 propagation accurate and up-to-date without spamming external servers or hitting rate limits.
 - Resilient Caching: If CelesTrak experiences a brief downtime or network error during a scheduled 12-hour refresh, the coordinator falls back to your currently cached TLE data rather than crashing the sensor states.
-- No Connection Right After a Restart: If the download fails because there is no connection at all, the integration tries again after a minute, up to three times, and only writes a message to the log if all of them fail. After that it goes back to one attempt per hour.
+- Going Easy on CelesTrak: CelesTrak asks for only a few downloads a day. Each satellite is downloaded at most every 12 hours, or every 6 hours after a failure, whatever the number of restarts.
 
 ---
 

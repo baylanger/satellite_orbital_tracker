@@ -16,8 +16,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, EARTH_MEAN_RADIUS_KM, normalize_norad_id
 from .sun import is_sunlit, sun_direction
@@ -26,9 +28,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # TLE polling, retry intervals, and crew fetch frequency constants
 TLE_FETCH_INTERVAL = timedelta(hours=12)         # Normal interval between successful fetches
-TLE_RETRY_INTERVAL = timedelta(hours=1)          # Shorter retry interval if the last fetch failed
-TLE_QUICK_RETRY_INTERVAL = timedelta(minutes=1)  # Retry delay after a connection failure (no HTTP answer at all)
-TLE_QUICK_RETRIES = 3                            # Quick retries (and quiet logging) before falling back to the hourly retry
+TLE_RETRY_INTERVAL = timedelta(hours=6)          # Wait after a failed download (kept over restarts, to go easy on CelesTrak)
+TLE_STARTUP_DELAY = timedelta(minutes=1)         # A due download waits this long after start-up, so Home Assistant can finish starting
 LOST_SATELLITE_WINDOW = timedelta(hours=24)      # Duration of continuous 404s before raising a repair issue
 MAX_CONSECUTIVE_CALC_FAILURES = 5                # Calculation errors in a row before entities go unavailable
 CREW_FETCH_INTERVAL = timedelta(hours=24)        # Only scrape NASA crew manifest once a day
@@ -86,7 +87,9 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
         self.last_tle_attempt = None      # Timestamp of last fetch ATTEMPT (success or fail)
         self.calc_failures = 0            # Consecutive orbital calculation failures
         self.last_fetch_status = 200      # Track HTTP status code of the last attempt
-        self.connection_failures = 0      # Consecutive TLE downloads that failed without any HTTP answer
+        self._last_fetch_error = None     # Why the last download failed without an HTTP answer (for the log)
+        self._download_not_before = None  # No download before this time (the start-up delay)
+        self._startup_timer = None        # Cancels the refresh scheduled at the end of the start-up delay
         self.first_404_timestamp = None   # Tracks when a continuous 404 missing satellite streak started
         self.crew_members = []            # Cached list of current ISS crew members
         self.last_crew_fetch = None       # Timestamp of last successful crew scrape
@@ -133,10 +136,12 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
             now = datetime.now(timezone.utc)
 
             # 1. If in-memory satellite object is not loaded, attempt loading from disk store cache first
+            loaded_from_cache = False
             if self.satellite is None:
                 stored_data = await self.store.async_load()
                 if stored_data:
                     self._restore_missing_streak(stored_data)
+                    self._restore_last_attempt(stored_data, now)
                     try:
                         line1 = stored_data.get("line1")
                         line2 = stored_data.get("line2")
@@ -146,52 +151,62 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                             self.satellite = EarthSatellite(line1, line2, name, self.ts)
                             self.last_tle_fetch = datetime.fromisoformat(fetch_ts_str)
                             self.satellite_name = name
-                            # Carry the 12-hour schedule over restarts and reloads: treat the cached download
-                            # as the last attempt so a fresh cache is not downloaded again. A timestamp in the
+                            loaded_from_cache = True
+                            # The schedule carries over restarts and reloads: when the last attempt was not saved
+                            # (older versions), the cached download counts as the last attempt. A timestamp in the
                             # future (clock moved back) is ignored, so the TLE is fetched right away instead.
-                            if self.last_tle_fetch <= now:
+                            if self.last_tle_attempt is None and self.last_tle_fetch <= now:
                                 self.last_tle_attempt = self.last_tle_fetch
                             _LOGGER.debug("Successfully loaded TLE cache from disk for %s", name)
                     except Exception as err:
                         _LOGGER.debug("Failed to parse stored TLE cache: %s", err)
 
-            # 2. Check if we need to fetch a fresh TLE using intelligent interval / backoff logic
-            time_since_last_attempt = (now - self.last_tle_attempt) if self.last_tle_attempt else None
-            if self.last_fetch_status == 200:
-                required_interval = TLE_FETCH_INTERVAL
-            elif self.last_fetch_status == 0 and self.connection_failures <= TLE_QUICK_RETRIES:
-                # No connection yet (typically right after Home Assistant starts): try again soon, a few times
-                required_interval = TLE_QUICK_RETRY_INTERVAL
-            else:
-                required_interval = TLE_RETRY_INTERVAL
-
-            should_fetch = (
-                self.satellite is None
-                or self.last_tle_attempt is None
-                or time_since_last_attempt > required_interval
+            # 2. Check if we need to fetch a fresh TLE: every 12 hours, or 6 hours after a failed download
+            #    (the last attempt is saved, so a restart does not skip the wait)
+            download_due = self._tle_download_due(now)
+            if loaded_from_cache and download_due:
+                # Saved TLEs are good for days: let Home Assistant finish starting before downloading
+                self._download_not_before = now + TLE_STARTUP_DELAY
+                self._startup_timer = async_call_later(
+                    self.hass, TLE_STARTUP_DELAY.total_seconds(), self._async_startup_download
+                )
+                _LOGGER.debug(
+                    "The saved TLE for %s is due for a refresh: downloading in %s",
+                    self.satellite_name, TLE_STARTUP_DELAY,
+                )
+            should_fetch = download_due and not (
+                self.satellite is not None and self._download_not_before is not None and now < self._download_not_before
             )
+
+            if not download_due and self.satellite is None:
+                # Nothing saved and the last download failed less than 6 hours ago: do not ask CelesTrak again yet
+                raise UpdateFailed(
+                    f"No TLE data for {self.satellite_name}: the last download failed, next attempt "
+                    f"{self._next_attempt_text(self.last_tle_attempt)}."
+                )
 
             if should_fetch:
                 success, status_code = await self._async_fetch_and_parse_tle()
                 self.last_tle_attempt = now
                 self.last_fetch_status = status_code
-                self.connection_failures = self.connection_failures + 1 if status_code == 0 else 0
 
                 if not success:
+                    await self._async_remember_failed_attempt(now, status_code)
+                    reason = self._last_fetch_error if status_code == 0 and self._last_fetch_error else f"HTTP status {status_code}"
+                    next_attempt = self._next_attempt_text(now)
                     if self.satellite is not None:
-                        # Graceful fallback: continue using the cached orbital elements. The first few connection
-                        # failures are expected while the network comes up after a restart, so they are only
-                        # logged at debug level; a failure that lasts is a warning.
-                        quiet = status_code == 0 and self.connection_failures <= TLE_QUICK_RETRIES
-                        _LOGGER.log(
-                            logging.DEBUG if quiet else logging.WARNING,
-                            "Failed to fetch fresh TLE from CelesTrak (Status: %s). Using cached TLE data for %s.",
-                            status_code,
-                            self.satellite_name
+                        # Graceful fallback: continue using the cached orbital elements
+                        _LOGGER.warning(
+                            "Failed to fetch fresh TLE from CelesTrak for %s (%s). Using the saved TLE data. "
+                            "Next attempt %s.",
+                            self.satellite_name, reason, next_attempt,
                         )
                     else:
                         # Hard failure if network fails and no local cache exists at all
-                        raise UpdateFailed(f"Failed to download TLE data and no cache exists for {self.satellite_name}.")
+                        raise UpdateFailed(
+                            f"Failed to download TLE data for {self.satellite_name} ({reason}) and no cache exists. "
+                            f"Next attempt {next_attempt}."
+                        )
 
             # 3. Fetch structured ISS crew manifest once a day if tracking the International Space Station (NORAD ID 25544)
             #    A failed or empty scrape is retried hourly (not on every poll) and keeps the cached crew.
@@ -727,6 +742,53 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                 break
         return rise, peak
 
+    def _tle_download_due(self, now: datetime) -> bool:
+        """Return True when a TLE download is due: 12 hours after a successful one, 6 hours after a failed one."""
+        if self.last_tle_attempt is None:
+            return True
+        interval = TLE_FETCH_INTERVAL if self.last_fetch_status == 200 else TLE_RETRY_INTERVAL
+        return (now - self.last_tle_attempt) > interval
+
+    @staticmethod
+    def _next_attempt_text(last_attempt: datetime | None) -> str:
+        """Return when the next download will be tried after a failed one at last_attempt, for the log."""
+        if last_attempt is None:
+            return "at the next update"
+        retry_at = dt_util.as_local(last_attempt + TLE_RETRY_INTERVAL)
+        return f"in about {int(TLE_RETRY_INTERVAL.total_seconds() // 3600)} hours (after {retry_at:%Y-%m-%d %H:%M})"
+
+    def _restore_last_attempt(self, stored_data: dict, now: datetime) -> None:
+        """Restore when the last download was tried and how it ended, so a restart does not skip the wait."""
+        try:
+            attempt = datetime.fromisoformat(stored_data["last_attempt"])
+            if attempt <= now:
+                self.last_tle_attempt = attempt
+                self.last_fetch_status = int(stored_data.get("last_status", 200))
+        except (KeyError, TypeError, ValueError):
+            pass  # saved by an older version: the schedule follows the last successful download
+
+    async def _async_remember_failed_attempt(self, attempt: datetime, status_code: int) -> None:
+        """Save the failed attempt next to the saved TLE (if any), so the wait of 6 hours survives a restart."""
+        try:
+            stored = await self.store.async_load() or {}
+            await self.store.async_save({**stored, "last_attempt": attempt.isoformat(), "last_status": status_code})
+        except Exception as err:
+            _LOGGER.debug("Could not save the failed download attempt: %s", err)
+
+    async def _async_startup_download(self, _now=None) -> None:
+        """Refresh once the start-up delay is over, which downloads the TLE if it is still due."""
+        self._startup_timer = None
+        self._download_not_before = None
+        await self.async_request_refresh()
+
+    @override
+    async def async_shutdown(self) -> None:
+        """Cancel the pending start-up download when the entry is unloaded."""
+        if self._startup_timer is not None:
+            self._startup_timer()
+            self._startup_timer = None
+        await super().async_shutdown()
+
     def _restore_missing_streak(self, stored_data: dict) -> None:
         """Continue a "satellite not found" streak that started before a restart, so the 24 hours are not restarted."""
         try:
@@ -822,6 +884,8 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
                     "line2": line2,
                     "name": parsed_name,
                     "timestamp": self.last_tle_fetch.isoformat(),
+                    "last_attempt": self.last_tle_fetch.isoformat(),
+                    "last_status": 200,
                 })
 
                 # Follow CelesTrak when it renames the satellite, but only while the title is still one the integration
@@ -836,9 +900,7 @@ class SatelliteDataUpdateCoordinator(DataUpdateCoordinator):
 
                 return True, status_code
         except Exception as err:
-            # Quiet for the first few attempts: the network is often not up yet right after a restart
-            _LOGGER.log(
-                logging.DEBUG if self.connection_failures < TLE_QUICK_RETRIES else logging.ERROR,
-                "TLE fetch exception for %s: %s %s", self.satellite_name, type(err).__name__, err,
-            )
+            # No HTTP answer at all (timeout, no connection ...). A timeout has an empty message, so name the type.
+            self._last_fetch_error = f"{type(err).__name__} {err}".strip()
+            _LOGGER.debug("TLE fetch exception for %s: %s", self.satellite_name, self._last_fetch_error, exc_info=True)
             return False, 0

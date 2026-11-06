@@ -15,6 +15,7 @@
     },
     "error": {
       "cannot_connect": "Verbinding met CelesTrak mislukt, probeer het later opnieuw",
+      "celestrak_refused": "CelesTrak heeft het verzoek geweigerd. Het beperkt hoe vaak een adres mag vragen, wacht een paar uur voordat je het opnieuw probeert",
       "invalid_norad_id": "De ingevoerde NORAD-ID bestaat niet",
       "norad_id_not_numeric": "Een NORAD-ID bestaat alleen uit cijfers (bijv. 25544)",
       "invalid_interval": "Het updateinterval moet tussen 5 en 3600 seconden liggen.",
