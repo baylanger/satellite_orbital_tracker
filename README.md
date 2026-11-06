@@ -134,6 +134,8 @@ Each satellite instance creates a dedicated device with 17 namespaced entities t
 
 Enable a disabled entity under Settings > Devices & services > the satellite's device. Each entity is described below.
 
+Entity names are translated into German, Spanish, French, Italian and Dutch, following the language set in Home Assistant. The entity IDs shown below are the English ones. An installation that already exists keeps its entity IDs when names are translated. A new installation in another language gets entity IDs built by Home Assistant from the translated names (for example `sensor.satellite_iss_prochain_passage_visible` in French).
+
 ### 1. Status Sensor
 Entity ID Pattern: `sensor.satellite_[name]_status` (e.g., `sensor.satellite_iss_zarya_status`)
 State: Current operational tracking state:

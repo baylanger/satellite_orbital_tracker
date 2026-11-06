@@ -74,7 +74,7 @@ class SatelliteStatusSensor(SatelliteBaseSensor):
     def __init__(self, coordinator, entry: ConfigEntry):
         """Initialize the status sensor entity."""
         super().__init__(coordinator, entry)
-        self._attr_name = "Status"
+        self._attr_translation_key = "status"
         self._attr_unique_id = f"{entry.entry_id}_status"
 
     @property
@@ -117,7 +117,7 @@ class SatelliteAltitudeSensor(SatelliteBaseSensor):
     def __init__(self, coordinator, entry: ConfigEntry):
         """Initialize the altitude sensor entity."""
         super().__init__(coordinator, entry)
-        self._attr_name = "Orbital Altitude"
+        self._attr_translation_key = "orbital_altitude"
         self._attr_unique_id = f"{entry.entry_id}_altitude"
         self._attr_entity_registry_enabled_default = False  # new installs: enable it in the UI if wanted
         self._attr_native_unit_of_measurement = UnitOfLength.KILOMETERS
@@ -139,7 +139,7 @@ class SatelliteSpeedSensor(SatelliteBaseSensor):
     def __init__(self, coordinator, entry: ConfigEntry):
         """Initialize the orbital speed sensor entity."""
         super().__init__(coordinator, entry)
-        self._attr_name = "Orbital Speed"
+        self._attr_translation_key = "orbital_speed"
         self._attr_unique_id = f"{entry.entry_id}_speed"
         self._attr_entity_registry_enabled_default = False  # enable it in the UI if wanted
         self._attr_device_class = SensorDeviceClass.SPEED
@@ -197,7 +197,7 @@ class SatelliteGroundDistanceSensor(SatelliteDistanceSensor):
 
     def __init__(self, coordinator, entry: ConfigEntry):
         super().__init__(coordinator, entry)
-        self._attr_name = "Ground Distance"
+        self._attr_translation_key = "ground_distance"
         self._attr_unique_id = f"{entry.entry_id}_ground_distance"
 
 class SatelliteLineOfSightSensor(SatelliteDistanceSensor):
@@ -207,7 +207,7 @@ class SatelliteLineOfSightSensor(SatelliteDistanceSensor):
 
     def __init__(self, coordinator, entry: ConfigEntry):
         super().__init__(coordinator, entry)
-        self._attr_name = "Line-of-Sight Distance"
+        self._attr_translation_key = "line_of_sight_distance"
         self._attr_unique_id = f"{entry.entry_id}_line_of_sight_distance"
 
 class SatelliteCurrentElevationSensor(SatelliteBaseSensor):
@@ -215,7 +215,7 @@ class SatelliteCurrentElevationSensor(SatelliteBaseSensor):
 
     def __init__(self, coordinator, entry: ConfigEntry):
         super().__init__(coordinator, entry)
-        self._attr_name = "Current Elevation"
+        self._attr_translation_key = "current_elevation"
         self._attr_unique_id = f"{entry.entry_id}_current_elevation"
         self._attr_entity_registry_enabled_default = False  # enable it in the UI if wanted
         self._attr_native_unit_of_measurement = DEGREE
@@ -237,7 +237,7 @@ class SatelliteCurrentAzimuthSensor(SatelliteBaseSensor):
 
     def __init__(self, coordinator, entry: ConfigEntry):
         super().__init__(coordinator, entry)
-        self._attr_name = "Current Azimuth"
+        self._attr_translation_key = "current_azimuth"
         self._attr_unique_id = f"{entry.entry_id}_current_azimuth"
         self._attr_entity_registry_enabled_default = False  # enable it in the UI if wanted
         self._attr_native_unit_of_measurement = DEGREE
@@ -269,7 +269,7 @@ class SatelliteMaxPassDegreesSensor(SatelliteBaseSensor):
     def __init__(self, coordinator, entry: ConfigEntry):
         """Initialize the maximum pass elevation angle sensor entity."""
         super().__init__(coordinator, entry)
-        self._attr_name = "Next Pass Max Elevation"
+        self._attr_translation_key = "next_pass_max_elevation"
         self._attr_unique_id = f"{entry.entry_id}_max_degrees"
         self._attr_native_unit_of_measurement = DEGREE
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -289,7 +289,7 @@ class SatelliteNextPassTimeSensor(SatelliteBaseSensor):
 
     def __init__(self, coordinator, entry: ConfigEntry):
         super().__init__(coordinator, entry)
-        self._attr_name = "Next Pass Time"
+        self._attr_translation_key = "next_pass_time"
         self._attr_unique_id = f"{entry.entry_id}_next_pass_time"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
@@ -308,7 +308,7 @@ class SatelliteNextPassRemainingSensor(SatelliteBaseSensor):
 
     def __init__(self, coordinator, entry: ConfigEntry):
         super().__init__(coordinator, entry)
-        self._attr_name = "Next Pass Time Remaining"
+        self._attr_translation_key = "next_pass_time_remaining"
         self._attr_unique_id = f"{entry.entry_id}_next_pass_time_remaining"
         self._attr_device_class = SensorDeviceClass.DURATION
         self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
@@ -331,7 +331,7 @@ class SatellitePassDurationSensor(SatelliteBaseSensor):
 
     def __init__(self, coordinator, entry: ConfigEntry):
         super().__init__(coordinator, entry)
-        self._attr_name = "Pass Duration"
+        self._attr_translation_key = "pass_duration"
         self._attr_unique_id = f"{entry.entry_id}_pass_duration"
         self._attr_device_class = SensorDeviceClass.DURATION
         self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
@@ -359,7 +359,7 @@ class SatellitePassRemainingSensor(SatelliteBaseSensor):
 
     def __init__(self, coordinator, entry: ConfigEntry):
         super().__init__(coordinator, entry)
-        self._attr_name = "Pass Time Remaining"
+        self._attr_translation_key = "pass_time_remaining"
         self._attr_unique_id = f"{entry.entry_id}_pass_time_remaining"
         self._attr_device_class = SensorDeviceClass.DURATION
         self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
@@ -401,7 +401,7 @@ class SatelliteSunriseSensor(SatelliteShadowTimeSensor):
 
     def __init__(self, coordinator, entry: ConfigEntry):
         super().__init__(coordinator, entry)
-        self._attr_name = "Next Satellite Sunrise"
+        self._attr_translation_key = "next_satellite_sunrise"
         self._attr_unique_id = f"{entry.entry_id}_next_sunrise"
 
 class SatelliteSunsetSensor(SatelliteShadowTimeSensor):
@@ -411,7 +411,7 @@ class SatelliteSunsetSensor(SatelliteShadowTimeSensor):
 
     def __init__(self, coordinator, entry: ConfigEntry):
         super().__init__(coordinator, entry)
-        self._attr_name = "Next Satellite Sunset"
+        self._attr_translation_key = "next_satellite_sunset"
         self._attr_unique_id = f"{entry.entry_id}_next_sunset"
 
 
@@ -420,7 +420,7 @@ class SatelliteNextVisiblePassSensor(SatelliteBaseSensor):
 
     def __init__(self, coordinator, entry: ConfigEntry):
         super().__init__(coordinator, entry)
-        self._attr_name = "Next Visible Pass"
+        self._attr_translation_key = "next_visible_pass"
         self._attr_unique_id = f"{entry.entry_id}_next_visible_pass"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_entity_registry_enabled_default = False  # enable it in the UI if wanted

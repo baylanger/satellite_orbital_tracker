@@ -40,10 +40,67 @@
       "integer_required": "L'intervalle de mise à jour doit être un nombre entier (sans décimales)."
     }
   },
+  "entity": {
+    "sensor": {
+      "status": {
+        "name": "État"
+      },
+      "orbital_altitude": {
+        "name": "Altitude orbitale"
+      },
+      "orbital_speed": {
+        "name": "Vitesse orbitale"
+      },
+      "ground_distance": {
+        "name": "Distance au sol"
+      },
+      "line_of_sight_distance": {
+        "name": "Distance en ligne de visée"
+      },
+      "current_elevation": {
+        "name": "Élévation actuelle"
+      },
+      "current_azimuth": {
+        "name": "Azimut actuel"
+      },
+      "next_pass_max_elevation": {
+        "name": "Élévation maximale du prochain passage"
+      },
+      "next_pass_time": {
+        "name": "Heure du prochain passage"
+      },
+      "next_pass_time_remaining": {
+        "name": "Temps restant avant le prochain passage"
+      },
+      "pass_duration": {
+        "name": "Durée du passage"
+      },
+      "pass_time_remaining": {
+        "name": "Temps restant du passage"
+      },
+      "next_satellite_sunrise": {
+        "name": "Prochain lever de soleil du satellite"
+      },
+      "next_satellite_sunset": {
+        "name": "Prochain coucher de soleil du satellite"
+      },
+      "next_visible_pass": {
+        "name": "Prochain passage visible"
+      }
+    },
+    "binary_sensor": {
+      "sunlit": {
+        "name": "Éclairé par le Soleil"
+      },
+      "visible_now": {
+        "name": "Visible maintenant"
+      }
+    }
+  },
   "issues": {
     "satellite_lost": {
       "title": "Satellite {satellite_name} ({satellite_id}) manquant",
-      "description": "CelesTrak a renvoyé une erreur 404 Non trouvé pour l'identifiant NORAD {satellite_id} de manière continue pendant plus de 2 heures. Le satellite a peut-être désintégré ou été désaffecté."
+      "description": "CelesTrak a renvoyé une erreur 404 Non trouvé pour l'identifiant NORAD {satellite_id} de manière continue pendant plus de 24 heures. Le satellite a peut-être désintégré ou été désaffecté."
     }
   }
 }

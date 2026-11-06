@@ -40,6 +40,63 @@
       "integer_required": "The update interval must be a whole number (no decimals)."
     }
   },
+  "entity": {
+    "sensor": {
+      "status": {
+        "name": "Status"
+      },
+      "orbital_altitude": {
+        "name": "Orbital Altitude"
+      },
+      "orbital_speed": {
+        "name": "Orbital Speed"
+      },
+      "ground_distance": {
+        "name": "Ground Distance"
+      },
+      "line_of_sight_distance": {
+        "name": "Line-of-Sight Distance"
+      },
+      "current_elevation": {
+        "name": "Current Elevation"
+      },
+      "current_azimuth": {
+        "name": "Current Azimuth"
+      },
+      "next_pass_max_elevation": {
+        "name": "Next Pass Max Elevation"
+      },
+      "next_pass_time": {
+        "name": "Next Pass Time"
+      },
+      "next_pass_time_remaining": {
+        "name": "Next Pass Time Remaining"
+      },
+      "pass_duration": {
+        "name": "Pass Duration"
+      },
+      "pass_time_remaining": {
+        "name": "Pass Time Remaining"
+      },
+      "next_satellite_sunrise": {
+        "name": "Next Satellite Sunrise"
+      },
+      "next_satellite_sunset": {
+        "name": "Next Satellite Sunset"
+      },
+      "next_visible_pass": {
+        "name": "Next Visible Pass"
+      }
+    },
+    "binary_sensor": {
+      "sunlit": {
+        "name": "Sunlit"
+      },
+      "visible_now": {
+        "name": "Visible Now"
+      }
+    }
+  },
   "issues": {
     "satellite_lost": {
       "title": "Satellite {satellite_name} ({satellite_id}) Missing",
