@@ -11,6 +11,35 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Enable custom integration loading plugin for pytest-homeassistant-custom-component
 pytest_plugins = "pytest_homeassistant_custom_component"
 
+
+def _patch_client_response_for_aioresponses() -> None:
+    """Let aioresponses 0.7.9 build responses with aiohttp >= 3.14.
+
+    aiohttp 3.14 made ``stream_writer`` a required keyword-only argument of
+    ``ClientResponse.__init__``; aioresponses does not pass it yet, which made
+    every mocked request raise TypeError. Supply a stub when it is missing.
+    Remove once aioresponses releases support for aiohttp 3.14.
+    """
+    import inspect
+    from unittest.mock import MagicMock
+
+    from aiohttp import ClientResponse
+
+    param = inspect.signature(ClientResponse.__init__).parameters.get("stream_writer")
+    if param is None or param.default is not inspect.Parameter.empty:
+        return
+    original = ClientResponse.__init__
+
+    def patched(self, *args, **kwargs):
+        if "stream_writer" not in kwargs:
+            kwargs["stream_writer"] = MagicMock(output_size=0)
+        original(self, *args, **kwargs)
+
+    ClientResponse.__init__ = patched
+
+
+_patch_client_response_for_aioresponses()
+
 @pytest.fixture(autouse=True)
 def auto_enable_custom_integrations(enable_custom_integrations):
     """Automatically enable custom integrations for all tests in the suite."""

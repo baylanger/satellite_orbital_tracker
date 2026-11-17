@@ -1,7 +1,7 @@
 {
   "name": "Satellite Orbital Tracker",
   "render_readme": true,
-  "homeassistant": "2026.9.0",
+  "homeassistant": "2026.10.2",
   "hide_default_branch": true,
   "zip_release": true,
   "filename": "satellite_orbital_tracker.zip"
