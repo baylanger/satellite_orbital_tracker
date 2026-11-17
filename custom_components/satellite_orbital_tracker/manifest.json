@@ -12,7 +12,7 @@
   "issue_tracker": "https://github.com/baylanger/satellite_orbital_tracker/issues",
   "requirements": [
     "skyfield==1.55",
-    "beautifulsoup4"
+    "beautifulsoup4>=4.12.0"
   ],
   "version": "v2.0.0"
 }
