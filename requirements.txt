@@ -1,3 +1,3 @@
 # Runtime dependencies needed during test execution
 skyfield==1.55
-beautifulsoup4>=4.12.0
+beautifulsoup4>=4.15.0
